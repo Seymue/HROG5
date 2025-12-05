@@ -3,21 +3,6 @@ moxa_client.py
 
 Модуль для работы с MOXA (RS-232 <-> Ethernet).
 Реализует подключение по TCP, отправку/приём байт и авто-переподключение.
-
-Использование (минимальный пример):
-
-    from moxa_client import MoxaClient
-
-    moxa = MoxaClient(host="192.168.0.100", port=4001)
-    moxa.connect()
-
-    try:
-        # отправляем какие-то байты и читаем ответ
-        request = b"*IDN?\r\n"   # пример, реальная команда зависит от протокола HROG-5
-        response = moxa.send_and_receive(request)
-        print("Ответ от устройства:", response)
-    finally:
-        moxa.close()
 """
 
 import socket
@@ -93,7 +78,7 @@ class MoxaClient:
                 f"Не удалось подключиться к MOXA {self.host}:{self.port}: {e}"
             )
         self._sock = s
-        print(f"[MOXA] Подключено к {self.host}:{self.port}")
+        # Больше ничего не печатаем — только исключения наружу
 
     def close(self):
         """Закрыть соединение."""
@@ -104,7 +89,6 @@ class MoxaClient:
                 pass
             finally:
                 self._sock = None
-                print("[MOXA] Соединение закрыто")
 
     def _ensure_connected(self):
         """Убедиться, что соединение открыто, при необходимости подключиться."""
@@ -124,24 +108,25 @@ class MoxaClient:
             raise TypeError("send_raw ожидает bytes или bytearray")
 
         attempt = 0
+        last_error: Optional[Exception] = None
+
         while True:
             attempt += 1
             self._ensure_connected()
             try:
                 assert self._sock is not None
                 self._sock.sendall(data)
-                # если дошли до сюда — успех
+                # успех
                 return
             except (OSError, socket.error) as e:
-                print(f"[MOXA] Ошибка отправки данных: {e}")
+                last_error = e
                 self.close()
 
                 if attempt > self.max_retries:
                     raise MoxaConnectionError(
-                        f"Не удалось отправить данные на MOXA после {attempt} попыток"
+                        f"Не удалось отправить данные на MOXA после {attempt} попыток: {last_error}"
                     )
 
-                print(f"[MOXA] Пытаемся переподключиться (попытка {attempt})...")
                 time.sleep(self.reconnect_delay)
                 # в следующем цикле _ensure_connected() сделает connect()
 
@@ -150,15 +135,14 @@ class MoxaClient:
         Прочитать данные из сокета (до max_bytes).
         Блокируется до получения данных или истечения тайм-аута.
 
-        :return: bytes (пустые, если тайм-аут)
+        :return: bytes (пустые, если тайм-аут или соединение закрыто)
         """
         self._ensure_connected()
         try:
             assert self._sock is not None
             data = self._sock.recv(max_bytes)
             # Если data == b'', это обычно значит закрытое соединение со стороны сервера
-            if data == b"":
-                print("[MOXA] Получен пустой ответ (возможно, соединение закрыто)")
+            # Ничего не печатаем, просто возвращаем как есть
             return data
         except socket.timeout:
             # нет данных, это не обязательно ошибка

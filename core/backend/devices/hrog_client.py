@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import date, time as dtime
 from typing import Optional, Dict, Any, Tuple
 
-from moxa_client import MoxaClient
+from .moxa_client import MoxaClient
 
 
 # --------- Вспомогательные структуры для некоторых команд ---------
