@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>HROG-5 Control Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --bg: #020617;
+            --bg2: #111827;
+            --border: #1f2933;
+            --accent: #38bdf8;
+            --text: #e5e7eb;
+            --text-dim: #9ca3af;
+            --error: #f97373;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 8px 14px;
+            border-bottom: 1px solid var(--border);
+            background: #020617;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        header h1 { margin: 0; font-size: 15px; }
+        header .subtitle { font-size: 11px; color: var(--text-dim); }
+
+        main {
+            flex: 1;
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+            overflow: hidden;
+        }
+
+        .column {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg2);
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .column.devices { width: 34%; min-width: 260px; }
+        .column.commands { flex: 1; }
+
+        .column-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 6px;
+        }
+
+        .column-header h2 { margin: 0; font-size: 13px; }
+        .column-header span { font-size: 11px; color: var(--text-dim); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        th, td {
+            padding: 4px 6px;
+            border-bottom: 1px solid #111827;
+        }
+
+        th { text-align: left; font-weight: 500; color: var(--text-dim); }
+
+        tr.device-row { cursor: pointer; }
+        tr.device-row:hover { background: #111827; }
+        tr.device-row.selected { background: rgba(56,189,248,0.15); }
+
+        .form-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .form-field {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        label {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        select, input, textarea {
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            padding: 5px 7px;
+            background: #020617;
+            color: var(--text);
+            font-size: 12px;
+            outline: none;
+        }
+
+        textarea { resize: vertical; min-height: 40px; max-height: 90px; }
+
+        select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+
+        button {
+            border-radius: 4px;
+            border: 1px solid var(--accent);
+            background: var(--accent);
+            color: #0b1120;
+            padding: 5px 10px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        button:disabled { opacity: 0.4; cursor: default; }
+
+        .button-secondary {
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: #020617;
+            color: var(--text-dim);
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .button-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+        }
+
+        .status-bar {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        .status-bar .value { color: var(--accent); }
+        .status-bar .error { color: var(--error); }
+
+        .result-block {
+            flex: 1;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: #020617;
+            padding: 6px;
+            font-size: 12px;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            margin-top: 6px;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 4px;
+        }
+
+        .result-header span { font-size: 11px; color: var(--text-dim); }
+
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 12px;
+            color: #e5e7eb;
+            flex: 1;
+            overflow: auto;
+        }
+
+        .dev-form-title {
+            margin: 6px 0 4px;
+            font-size: 12px;
+            color: var(--text-dim);
+            border-top: 1px solid #111827;
+            padding-top: 4px;
+        }
+
+        .dev-form-buttons {
+            display: flex;
+            gap: 6px;
+            margin-top: 2px;
+            flex-wrap: wrap;
+        }
+
+        .dev-id-display {
+            font-size: 10px;
+            color: var(--text-dim);
+            word-break: break-all;
+        }
+
+        /* панель статуса */
+        .status-panel {
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: #020617;
+            padding: 6px;
+            font-size: 11px;
+            margin-top: 6px;
+        }
+
+        .status-panel-title {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 4px 12px;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        .status-item span.label {
+            color: var(--text-dim);
+        }
+
+        .status-item span.value {
+            color: var(--text);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .status-item span.value-ok {
+            color: #4ade80;
+        }
+
+        .status-item span.value-bad {
+            color: var(--error);
+        }
+
+        .auto-refresh-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            margin-top: 4px;
+        }
+
+        .auto-refresh-row input[type="number"] {
+            width: 60px;
+            padding: 2px 4px;
+            font-size: 11px;
+        }
+
+        @media (max-width: 900px) {
+            main { flex-direction: column; }
+            .column.devices { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <div>
+        <h1>HROG-5 Control Panel</h1>
+        <div class="subtitle">Веб-интерфейс управления генератором HROG-5</div>
+    </div>
+</header>
+
+<main>
+    <!-- Левая колонка: устройства + их редактирование -->
+    <section class="column devices">
+        <div class="column-header">
+            <h2>Устройства</h2>
+            <span id="devices-count">Загрузка...</span>
+        </div>
+        <div style="flex:1; overflow:auto; margin-bottom:6px;">
+            <table>
+                <thead>
+                <tr>
+                    <th>Имя</th>
+                    <th>IP</th>
+                    <th>Порт</th>
+                    <th>Активно</th>
+                </tr>
+                </thead>
+                <tbody id="devices-table-body">
+                <!-- строки подставятся из JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Форма редактирования устройства -->
+        <div>
+            <div class="dev-form-title">Редактирование устройства</div>
+            <div class="dev-id-display" id="dev-id-display">ID: –</div>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="dev-name">Имя</label>
+                    <input id="dev-name" type="text" placeholder="Например, HROG-5 №1">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="dev-host">IP-адрес MOXA</label>
+                    <input id="dev-host" type="text" placeholder="192.168.1.141">
+                </div>
+                <div class="form-field" style="max-width:80px;">
+                    <label for="dev-port">Порт</label>
+                    <input id="dev-port" type="number" min="1" max="65535" value="4002">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="dev-desc">Описание</label>
+                    <textarea id="dev-desc" placeholder="Место установки, комментарии"></textarea>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-field" style="flex-direction:row;align-items:center;gap:6px;">
+                    <input id="dev-enabled" type="checkbox" checked>
+                    <label for="dev-enabled" style="margin:0;">Активно (использовать в системе)</label>
+                </div>
+            </div>
+
+            <div class="dev-form-buttons">
+                <button type="button" id="btn-new-device">Новое устройство</button>
+                <button type="button" id="btn-save-device">Сохранить</button>
+                <button type="button" class="button-secondary" id="btn-delete-device">Удалить</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Правая колонка: команды + статус -->
+    <section class="column commands">
+        <div class="column-header">
+            <h2>Команды HROG-5</h2>
+            <span id="selected-device-label">Устройство не выбрано</span>
+        </div>
+
+        <form id="command-form">
+            <div class="form-row">
+                <div class="form-field">
+                    <label for="command-code">Команда</label>
+                    <select id="command-code" required>
+                        <option value="GET_STATUS">GET_STATUS — сводный статус</option>
+                        <option value="TEMP?">TEMP? — температура</option>
+                        <option value="FREQ?">FREQ? — частота</option>
+                        <option value="PHAS?">PHAS? — фаза</option>
+                        <option value="PLL?">PLL? — PLL статус</option>
+                        <option value="SET_FREQ">SET_FREQ — установить частоту</option>
+                        <option value="SET_PHASE">SET_PHASE — установить фазу</option>
+                        <option value="SET_FFOF">SET_FFOF — frac freq</option>
+                        <option value="SET_TIME_OFFSET">SET_TIME_OFFSET — абсолютный сдвиг (ns)</option>
+                        <option value="STEP_FREQ">STEP_FREQ — шаг по частоте</option>
+                        <option value="STEP_PHASE">STEP_PHASE — шаг по фазе</option>
+                        <option value="STEP_TIME_OFFSET">STEP_TIME_OFFSET — шаг по врем. сдвигу</option>
+                        <option value="SET_PPS_WIDTH">SET_PPS_WIDTH — ширина PPS</option>
+                        <option value="SYNC">SYNC — синхронизация 1PPS</option>
+                        <option value="RESET_PHASE_COUNTER">RESET_PHASE_COUNTER — сброс счётчика</option>
+                        <option value="CLEAR_STATUS">CLEAR_STATUS — очистить статус</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="params-container">
+                <!-- сюда динамически подставляются поля параметров -->
+            </div>
+
+            <div class="button-row">
+                <button type="submit" id="send-button" disabled>Отправить команду</button>
+                <button type="button" class="button-secondary" id="clear-result">Очистить результат</button>
+                <div class="status-bar" id="status-bar">
+                    Устройство: <span class="value">не выбрано</span>
+                </div>
+            </div>
+        </form>
+
+        <!-- Панель статуса -->
+        <div class="status-panel">
+            <div class="status-panel-title">Текущий статус устройства (GET_STATUS)</div>
+            <div class="status-grid">
+                <div class="status-item">
+                    <span class="label">Baud:</span>
+                    <span class="value" id="st-baud">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Температура, °C:</span>
+                    <span class="value" id="st-temp">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Частота, Гц:</span>
+                    <span class="value" id="st-freq">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Фаза, град:</span>
+                    <span class="value" id="st-phase">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Frac freq:</span>
+                    <span class="value" id="st-ffof">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Δt, нс:</span>
+                    <span class="value" id="st-toffs">–</span>
+                </div>
+
+                <div class="status-item">
+                    <span class="label">PLL Osc, dBm:</span>
+                    <span class="value" id="st-pll-osc">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">PLL Ref, dBm:</span>
+                    <span class="value" id="st-pll-ref">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Lock, V:</span>
+                    <span class="value" id="st-pll-lock">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">PLL, V:</span>
+                    <span class="value" id="st-pll-pll">–</span>
+                </div>
+
+                <div class="status-item">
+                    <span class="label">Ext ref err:</span>
+                    <span class="value" id="st-sre-ext">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Int osc err:</span>
+                    <span class="value" id="st-sre-int">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">PLL lock err:</span>
+                    <span class="value" id="st-sre-pll">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Tuning volt err:</span>
+                    <span class="value" id="st-sre-tune">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Invalid param:</span>
+                    <span class="value" id="st-sre-param">–</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Invalid cmd:</span>
+                    <span class="value" id="st-sre-cmd">–</span>
+                </div>
+            </div>
+
+            <div class="auto-refresh-row">
+                <input type="checkbox" id="auto-refresh">
+                <label for="auto-refresh" style="margin:0;">Автообновление GET_STATUS каждые</label>
+                <input type="number" id="refresh-interval" min="1" value="5">
+                <span>сек.</span>
+            </div>
+        </div>
+
+        <div class="result-block">
+            <div class="result-header">
+                <span>Сырой ответ последней команды</span>
+                <span id="last-duration">–</span>
+            </div>
+            <pre id="command-result">Пока ничего не отправляли.</pre>
+        </div>
+    </section>
+</main>
+
+<script>
+    // --- конфиг параметров команд ---
+    const commandParamsConfig = {
+        "SET_FREQ": [
+            {name: "freq_hz", label: "Частота, Гц", type: "number", step: "0.000001", placeholder: "Например, 0.001"}
+        ],
+        "SET_PHASE": [
+            {name: "phase_deg", label: "Фаза, градусы", type: "number", step: "0.0001", placeholder: "Например, 90.0"}
+        ],
+        "SET_FFOF": [
+            {name: "ffof", label: "Frac freq", type: "number", step: "1e-12", placeholder: "Например, 2e-10"}
+        ],
+        "SET_TIME_OFFSET": [
+            {name: "toffset_ns", label: "Абсолютный сдвиг, нс", type: "number", step: "0.001", placeholder: "Например, 100.0"}
+        ],
+        "STEP_FREQ": [
+            {name: "step_hz", label: "Шаг по частоте, Гц", type: "number", step: "0.000001", placeholder: "Например, 0.001"}
+        ],
+        "STEP_PHASE": [
+            {name: "step_deg", label: "Шаг по фазе, градусы", type: "number", step: "0.0001", placeholder: "Например, 10.0"}
+        ],
+        "STEP_TIME_OFFSET": [
+            {name: "step_ns", label: "Шаг по времени, нс", type: "number", step: "0.001", placeholder: "Например, 10.0"}
+        ],
+        "SET_PPS_WIDTH": [
+            {name: "pwidth_index", label: "Индекс PPS (0–7)", type: "number", step: "1", placeholder: "Например, 4"}
+        ]
+    };
+
+    let devices = [];
+    let selectedDeviceId = null;   // для команд
+    let editingDeviceId = null;    // для формы
+    let autoRefreshTimer = null;
+
+    const devicesTableBody = document.getElementById("devices-table-body");
+    const devicesCountLabel = document.getElementById("devices-count");
+    const selectedDeviceLabel = document.getElementById("selected-device-label");
+    const commandForm = document.getElementById("command-form");
+    const commandCodeSelect = document.getElementById("command-code");
+    const paramsContainer = document.getElementById("params-container");
+    const sendButton = document.getElementById("send-button");
+    const clearResultButton = document.getElementById("clear-result");
+    const statusBar = document.getElementById("status-bar");
+    const commandResult = document.getElementById("command-result");
+    const lastDuration = document.getElementById("last-duration");
+
+    // поля формы устройств
+    const devIdDisplay = document.getElementById("dev-id-display");
+    const devNameInput = document.getElementById("dev-name");
+    const devHostInput = document.getElementById("dev-host");
+    const devPortInput = document.getElementById("dev-port");
+    const devDescInput = document.getElementById("dev-desc");
+    const devEnabledInput = document.getElementById("dev-enabled");
+    const btnNewDevice = document.getElementById("btn-new-device");
+    const btnSaveDevice = document.getElementById("btn-save-device");
+    const btnDeleteDevice = document.getElementById("btn-delete-device");
+
+    // элементы панели статуса
+    const stBaud   = document.getElementById("st-baud");
+    const stTemp   = document.getElementById("st-temp");
+    const stFreq   = document.getElementById("st-freq");
+    const stPhase  = document.getElementById("st-phase");
+    const stFfof   = document.getElementById("st-ffof");
+    const stToffs  = document.getElementById("st-toffs");
+
+    const stPllOsc  = document.getElementById("st-pll-osc");
+    const stPllRef  = document.getElementById("st-pll-ref");
+    const stPllLock = document.getElementById("st-pll-lock");
+    const stPllPll  = document.getElementById("st-pll-pll");
+
+    const stSreExt   = document.getElementById("st-sre-ext");
+    const stSreInt   = document.getElementById("st-sre-int");
+    const stSrePll   = document.getElementById("st-sre-pll");
+    const stSreTune  = document.getElementById("st-sre-tune");
+    const stSreParam = document.getElementById("st-sre-param");
+    const stSreCmd   = document.getElementById("st-sre-cmd");
+
+    const autoRefreshCheckbox = document.getElementById("auto-refresh");
+    const refreshIntervalInput = document.getElementById("refresh-interval");
+
+    // ---- Загрузка и отрисовка устройств ----
+    async function loadDevices() {
+        devicesTableBody.innerHTML = "<tr><td colspan='4'>Загрузка...</td></tr>";
+        try {
+            const resp = await fetch("/devices");
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            devices = await resp.json();
+            renderDevicesTable();
+        } catch (e) {
+            devicesTableBody.innerHTML =
+                `<tr><td colspan="4" style="color:#f97373;">Ошибка загрузки устройств: ${e}</td></tr>`;
+            devicesCountLabel.textContent = "Ошибка";
+        }
+    }
+
+    function renderDevicesTable() {
+        if (!devices.length) {
+            devicesTableBody.innerHTML =
+                "<tr><td colspan='4'>Устройств нет. Добавь записи в таблицу devices.</td></tr>";
+            devicesCountLabel.textContent = "0 устройств";
+            return;
+        }
+
+        devicesTableBody.innerHTML = "";
+        devices.forEach((dev) => {
+            const tr = document.createElement("tr");
+            tr.classList.add("device-row");
+            tr.dataset.deviceId = dev.id;
+
+            if (dev.id === selectedDeviceId) tr.classList.add("selected");
+
+            tr.innerHTML = `
+                <td>${dev.name}</td>
+                <td>${dev.moxa_host}</td>
+                <td>${dev.moxa_port}</td>
+                <td>${dev.is_enabled ? "Да" : "Нет"}</td>
+            `;
+
+            tr.addEventListener("click", () => {
+                selectDevice(dev.id);
+                fillDeviceForm(dev.id);
+            });
+
+            devicesTableBody.appendChild(tr);
+        });
+
+        devicesCountLabel.textContent = `${devices.length} устройств`;
+    }
+
+    function selectDevice(deviceId) {
+        selectedDeviceId = deviceId;
+
+        document.querySelectorAll("tr.device-row").forEach((row) => {
+            row.classList.toggle("selected", row.dataset.deviceId === deviceId);
+        });
+
+        const dev = devices.find(d => d.id === deviceId);
+        if (dev) {
+            selectedDeviceLabel.textContent = `Выбрано: ${dev.name}`;
+            statusBar.innerHTML = `Устройство: <span class="value">${dev.name}</span>`;
+        } else {
+            selectedDeviceLabel.textContent = "Устройство не выбрано";
+            statusBar.innerHTML = `Устройство: <span class="value">не выбрано</span>`;
+        }
+
+        sendButton.disabled = !selectedDeviceId;
+
+        // если включено автообновление — сразу дернуть GET_STATUS
+        if (autoRefreshCheckbox.checked && selectedDeviceId) {
+            pollStatusOnce();
+        }
+    }
+
+    // ---- Форма устройства ----
+    function clearDeviceForm() {
+        editingDeviceId = null;
+        devIdDisplay.textContent = "ID: – (новое устройство)";
+        devNameInput.value = "";
+        devHostInput.value = "";
+        devPortInput.value = "4002";
+        devDescInput.value = "";
+        devEnabledInput.checked = true;
+
+        document.querySelectorAll("tr.device-row").forEach((row) => {
+            row.classList.remove("selected");
+        });
+        selectedDeviceLabel.textContent = "Устройство не выбрано";
+        statusBar.innerHTML = `Устройство: <span class="value">не выбрано</span>`;
+        selectedDeviceId = null;
+        sendButton.disabled = true;
+    }
+
+    function fillDeviceForm(deviceId) {
+        const dev = devices.find(d => d.id === deviceId);
+        if (!dev) return;
+        editingDeviceId = dev.id;
+        devIdDisplay.textContent = "ID: " + dev.id;
+        devNameInput.value = dev.name || "";
+        devHostInput.value = dev.moxa_host || "";
+        devPortInput.value = dev.moxa_port || "";
+        devDescInput.value = dev.description || "";
+        devEnabledInput.checked = !!dev.is_enabled;
+    }
+
+    async function saveDevice() {
+        const name = devNameInput.value.trim();
+        const host = devHostInput.value.trim();
+        const port = Number(devPortInput.value) || 0;
+        const desc = devDescInput.value.trim() || null;
+        const enabled = devEnabledInput.checked;
+
+        if (!name || !host || !port) {
+            alert("Имя, IP и порт обязательны.");
+            return;
+        }
+
+        const payload = {
+            name: name,
+            moxa_host: host,
+            moxa_port: port,
+            description: desc,
+            is_enabled: enabled
+        };
+
+        try {
+            let resp;
+            if (editingDeviceId) {
+                resp = await fetch(`/devices/${editingDeviceId}`, {
+                    method: "PUT",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                resp = await fetch("/devices", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            if (!resp.ok) {
+                const text = await resp.text();
+                alert("Ошибка сохранения устройства: " + resp.status + " " + text);
+                return;
+            }
+
+            const dev = await resp.json();
+            await loadDevices();
+            selectDevice(dev.id);
+            fillDeviceForm(dev.id);
+        } catch (e) {
+            alert("Ошибка сети при сохранении: " + e);
+        }
+    }
+
+    async function deleteDevice() {
+        if (!editingDeviceId) {
+            alert("Сначала выбери устройство для удаления.");
+            return;
+        }
+        if (!confirm("Точно удалить это устройство?")) return;
+
+        try {
+            const resp = await fetch(`/devices/${editingDeviceId}`, { method: "DELETE" });
+            if (!resp.ok) {
+                const text = await resp.text();
+                alert("Ошибка удаления: " + resp.status + " " + text);
+                return;
+            }
+            await loadDevices();
+            clearDeviceForm();
+        } catch (e) {
+            alert("Ошибка сети при удалении: " + e);
+        }
+    }
+
+    // ---- Параметры команд ----
+    function renderParamsFields() {
+        const cmd = commandCodeSelect.value;
+        const cfg = commandParamsConfig[cmd];
+        paramsContainer.innerHTML = "";
+        if (!cfg) return;
+
+        cfg.forEach(field => {
+            const wrapper = document.createElement("div");
+            wrapper.classList.add("form-row");
+            wrapper.innerHTML = `
+                <div class="form-field">
+                  <label for="param-${field.name}">${field.label}</label>
+                  <input
+                    id="param-${field.name}"
+                    name="${field.name}"
+                    type="${field.type}"
+                    step="${field.step || "any"}"
+                    placeholder="${field.placeholder || ""}"
+                    required
+                  >
+                </div>
+            `;
+            paramsContainer.appendChild(wrapper);
+        });
+    }
+
+    // ---- панель статуса ----
+    function setStatusValue(el, value, good = null) {
+        el.textContent = value;
+        el.classList.remove("value-ok", "value-bad");
+        if (good === true) el.classList.add("value-ok");
+        if (good === false) el.classList.add("value-bad");
+    }
+
+    function clearStatusPanel() {
+        [
+            stBaud, stTemp, stFreq, stPhase, stFfof, stToffs,
+            stPllOsc, stPllRef, stPllLock, stPllPll,
+            stSreExt, stSreInt, stSrePll, stSreTune, stSreParam, stSreCmd
+        ].forEach(el => setStatusValue(el, "–"));
+    }
+
+    function updateStatusPanel(data) {
+        if (!data) {
+            clearStatusPanel();
+            return;
+        }
+
+        setStatusValue(stBaud,  data.baud ?? "–");
+        setStatusValue(stTemp,  data.temperature ?? "–");
+        setStatusValue(stFreq,  data.freq ?? "–");
+        setStatusValue(stPhase, data.phase ?? "–");
+        setStatusValue(stFfof,  data.ffof ?? "–");
+        setStatusValue(stToffs, data.time_offset_ns ?? "–");
+
+        const pll = data.pll || {};
+        setStatusValue(stPllOsc,  pll.osc_dbm ?? "–");
+        setStatusValue(stPllRef,  pll.ref_dbm ?? "–");
+        setStatusValue(stPllLock, pll.lock_v ?? "–");
+        setStatusValue(stPllPll,  pll.pll_v ?? "–");
+
+        const sre = data.status_register || {};
+        // true = ошибка => красным, false = ок => зелёным
+        function flag(el, v) {
+            if (v === undefined || v === null) {
+                setStatusValue(el, "–");
+            } else if (v) {
+                setStatusValue(el, "Ошибка", false);
+            } else {
+                setStatusValue(el, "OK", true);
+            }
+        }
+
+        flag(stSreExt,   sre.ext_ref_error);
+        flag(stSreInt,   sre.int_osc_error);
+        flag(stSrePll,   sre.pll_lock_error);
+        flag(stSreTune,  sre.tuning_voltage_error);
+        flag(stSreParam, sre.invalid_parameter);
+        flag(stSreCmd,   sre.invalid_command);
+    }
+
+    // ---- Выполнение команд ----
+    async function executeCommand(event) {
+        event.preventDefault();
+        if (!selectedDeviceId) {
+            alert("Сначала выбери устройство в списке слева.");
+            return;
+        }
+
+        const cmd = commandCodeSelect.value;
+        const userId = null; // авторизация пока не используем
+
+        const params = {};
+        const cfg = commandParamsConfig[cmd];
+        if (cfg) {
+            for (const field of cfg) {
+                const input = document.getElementById("param-" + field.name);
+                if (!input) continue;
+                const raw = input.value;
+                if (raw === "") continue;
+                if (field.type === "number") {
+                    const num = Number(raw);
+                    if (isNaN(num)) {
+                        alert(`Поле "${field.label}" должно быть числом.`);
+                        return;
+                    }
+                    params[field.name] = num;
+                } else {
+                    params[field.name] = raw;
+                }
+            }
+        }
+
+        await runCommand(cmd, params, true);
+    }
+
+    async function runCommand(cmd, params = {}, fromButton = false) {
+        if (!selectedDeviceId) return;
+
+        if (fromButton) {
+            sendButton.disabled = true;
+            sendButton.textContent = "Выполнение...";
+            statusBar.innerHTML = `Выполнение команды <span class="value">${cmd}</span>…`;
+        }
+
+        try {
+            const body = {
+                device_id: selectedDeviceId,
+                command_code: cmd,
+                params: (params && Object.keys(params).length) ? params : null,
+                user_id: null,
+            };
+
+            const resp = await fetch("/commands/execute", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(body),
+            });
+
+            const json = await resp.json();
+
+            if (!resp.ok) {
+                if (fromButton) {
+                    commandResult.textContent =
+                        "Ошибка HTTP " + resp.status + ":\n" + JSON.stringify(json, null, 2);
+                    statusBar.innerHTML = '<span class="error">Ошибка выполнения команды.</span>';
+                    lastDuration.textContent = "–";
+                }
+            } else {
+                // для GET_STATUS обновляем панель
+                if (cmd === "GET_STATUS") {
+                    updateStatusPanel(json.data);
+                }
+
+                if (fromButton) {
+                    commandResult.textContent =
+                        json.data ? JSON.stringify(json.data, null, 2) : "(пусто)";
+                    statusBar.innerHTML = 'Статус: <span class="value">' + json.status + '</span>';
+                    lastDuration.textContent = json.duration_ms + " ms";
+                } else if (cmd === "GET_STATUS") {
+                    // автообновление: обновим подпись
+                    lastDuration.textContent = json.duration_ms + " ms (auto)";
+                }
+            }
+
+        } catch (e) {
+            if (fromButton) {
+                commandResult.textContent = "Ошибка запроса:\n" + e;
+                statusBar.innerHTML = '<span class="error">Ошибка сети или сервера.</span>';
+                lastDuration.textContent = "–";
+            }
+        } finally {
+            if (fromButton) {
+                sendButton.disabled = !selectedDeviceId;
+                sendButton.textContent = "Отправить команду";
+            }
+        }
+    }
+
+    async function pollStatusOnce() {
+        if (!selectedDeviceId) return;
+        await runCommand("GET_STATUS", {}, false);
+    }
+
+    function clearResult() {
+        commandResult.textContent = "Пока ничего не отправляли.";
+        lastDuration.textContent = "–";
+    }
+
+    function handleAutoRefreshToggle() {
+        if (autoRefreshTimer) {
+            clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+        }
+
+        if (!autoRefreshCheckbox.checked) {
+            return;
+        }
+
+        const intervalSec = Number(refreshIntervalInput.value) || 0;
+        if (intervalSec <= 0) {
+            alert("Интервал должен быть >= 1 секунды.");
+            autoRefreshCheckbox.checked = false;
+            return;
+        }
+
+        if (!selectedDeviceId) {
+            alert("Сначала выбери устройство для автообновления.");
+            autoRefreshCheckbox.checked = false;
+            return;
+        }
+
+        // первый запрос сразу
+        pollStatusOnce();
+        autoRefreshTimer = setInterval(pollStatusOnce, intervalSec * 1000);
+    }
+
+    // ---- init ----
+    window.addEventListener("DOMContentLoaded", () => {
+        loadDevices();
+        renderParamsFields();
+        clearStatusPanel();
+
+        commandCodeSelect.addEventListener("change", renderParamsFields);
+        commandForm.addEventListener("submit", executeCommand);
+        clearResultButton.addEventListener("click", clearResult);
+
+        btnNewDevice.addEventListener("click", clearDeviceForm);
+        btnSaveDevice.addEventListener("click", saveDevice);
+        btnDeleteDevice.addEventListener("click", deleteDevice);
+
+        autoRefreshCheckbox.addEventListener("change", handleAutoRefreshToggle);
+        refreshIntervalInput.addEventListener("change", () => {
+            if (autoRefreshCheckbox.checked) handleAutoRefreshToggle();
+        });
+    });
+</script>
+</body>
+</html>

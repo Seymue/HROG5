@@ -84,3 +84,29 @@ class DeviceRepository:
         """
         for dev in devices:
             self._session.add(dev)
+
+    def update(
+            self,
+            device: Device,
+            *,
+            name: str | None = None,
+            moxa_host: str | None = None,
+            moxa_port: int | None = None,
+            description: str | None = None,
+            is_enabled: bool | None = None,
+    ) -> Device:
+        """
+        Обновить поля существующего устройства.
+        Commit делается снаружи.
+        """
+        if name is not None:
+            device.name = name
+        if moxa_host is not None:
+            device.moxa_host = moxa_host
+        if moxa_port is not None:
+            device.moxa_port = moxa_port
+        if description is not None:
+            device.description = description
+        if is_enabled is not None:
+            device.is_enabled = is_enabled
+        return device

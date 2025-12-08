@@ -36,8 +36,8 @@ class MoxaClient:
         self,
         host: str,
         port: int,
-        timeout: float = 2.0,
-        reconnect_delay: float = 1.0,
+        timeout: float = 0.3,
+        reconnect_delay: float = 0.3,
         max_retries: int = 1,
     ):
         """

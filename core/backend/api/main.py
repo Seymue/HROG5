@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from core.backend.db.session import init_db, SessionLocal
 from core.backend.services.command_service import CommandService
@@ -18,9 +20,23 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
-    # Роутеры
+    # Роутеры API
     app.include_router(devices.router, prefix="/devices", tags=["devices"])
     app.include_router(commands.router, prefix="/commands", tags=["commands"])
+
+    # ---- Статический фронтенд ----
+    # Находим путь к директории core/frontend относительно этого файла
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
+    frontend_dir = os.path.join(project_root, "frontend")
+
+    if os.path.isdir(frontend_dir):
+        # /ui -> core/frontend/index.html
+        app.mount(
+            "/ui",
+            StaticFiles(directory=frontend_dir, html=True),
+            name="ui",
+        )
 
     # Глобальное состояние приложения (пул устройств + сервис команд)
     app.state.device_pool = None
@@ -32,7 +48,7 @@ def create_app() -> FastAPI:
         При запуске приложения:
           - создаём таблицы (если ещё не созданы);
           - инициализируем DevicePool из БД;
-          - создаём CommandService без репозитория (пока не логируем команды).
+          - создаём CommandService.
         """
         init_db()
 

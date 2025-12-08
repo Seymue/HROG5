@@ -30,10 +30,20 @@ class DevicePool:
 
     def register_device(self, device_id: str, client: Hrog5Client) -> None:
         """
-        Зарегистрировать устройство в пуле.
+        Зарегистрировать (или перерегистрировать) устройство в пуле.
         device_id — логический ID (может быть UUID из БД).
         """
         self._devices[device_id] = client
+
+    def unregister_device(self, device_id: str) -> None:
+        """
+        Убрать устройство из пула.
+        Если устройства нет — бросает DeviceNotFoundError.
+        """
+        try:
+            del self._devices[device_id]
+        except KeyError:
+            raise DeviceNotFoundError(f"Устройство {device_id!r} не найдено в пуле")
 
     def get_client(self, device_id: str) -> Hrog5Client:
         """
