@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import os
-from fastapi import FastAPI
+
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from core.backend.db.session import init_db, SessionLocal
 from core.backend.services.command_service import CommandService
@@ -24,41 +27,61 @@ def create_app() -> FastAPI:
     app.include_router(devices.router, prefix="/devices", tags=["devices"])
     app.include_router(commands.router, prefix="/commands", tags=["commands"])
 
-    # ---- Статический фронтенд ----
-    # Находим путь к директории core/frontend относительно этого файла
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
-    frontend_dir = os.path.join(project_root, "frontend")
+    # ---- Пути к фронтенду: core/frontend ----
+    current_dir = os.path.dirname(os.path.abspath(__file__))           # core/backend/api
+    project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))  # core
+    frontend_dir = os.path.join(project_root, "frontend")              # core/frontend
 
-    if os.path.isdir(frontend_dir):
-        # /ui -> core/frontend/index.html
+    templates_dir = os.path.join(frontend_dir, "templates")
+    static_dir = os.path.join(frontend_dir, "static")
+
+    templates: Jinja2Templates | None = None
+
+    # 1) Если есть шаблоны — включаем Jinja2 + статику
+    if os.path.isdir(templates_dir):
+        templates = Jinja2Templates(directory=templates_dir)
+
+        if os.path.isdir(static_dir):
+            app.mount(
+                "/static",
+                StaticFiles(directory=static_dir),
+                name="static",
+            )
+
+        @app.get("/", include_in_schema=False)
+        def root_redirect():
+            return RedirectResponse(url="/ui")
+
+        @app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
+        def ui_page(request: Request):
+            # pages/control_panel.html — главный "конструктор"
+            return templates.TemplateResponse(
+                "pages/control_panel.html",
+                {"request": request},
+            )
+
+    # 2) Иначе — старый режим: раздача index.html как статического файла
+    elif os.path.isdir(frontend_dir):
         app.mount(
             "/ui",
             StaticFiles(directory=frontend_dir, html=True),
             name="ui",
         )
 
-    # Глобальное состояние приложения (пул устройств + сервис команд)
+    # Глобальное состояние приложения
     app.state.device_pool = None
     app.state.command_service = None
 
     @app.on_event("startup")
     def on_startup() -> None:
-        """
-        При запуске приложения:
-          - создаём таблицы (если ещё не созданы);
-          - инициализируем DevicePool из БД;
-          - создаём CommandService.
-        """
         init_db()
-
         with SessionLocal() as session:
             device_pool: DevicePool = init_device_pool_from_db(session)
 
         app.state.device_pool = device_pool
         app.state.command_service = CommandService(
             device_pool=device_pool,
-            command_repo=None,  # репозиторий команд добавим позже
+            command_repo=None,
         )
 
     return app

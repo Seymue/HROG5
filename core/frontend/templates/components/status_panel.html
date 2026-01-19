@@ -1,0 +1,37 @@
+<!-- core/backend/web/templates/components/status_panel.html -->
+<div class="status-panel">
+  <div class="status-panel-title">Текущий статус устройства (GET_STATUS)</div>
+
+  <div class="status-grid">
+    <div class="status-item"><span class="label">Baud:</span><span class="value" id="st-baud">–</span></div>
+    <div class="status-item"><span class="label">Температура, °C:</span><span class="value" id="st-temp">–</span></div>
+
+    <div class="status-item"><span class="label">Частота, Гц:</span><span class="value" id="st-freq">–</span></div>
+    <div class="status-item"><span class="label">Фаза, град:</span><span class="value" id="st-phase">–</span></div>
+
+    <div class="status-item"><span class="label">Frac freq:</span><span class="value" id="st-ffof">–</span></div>
+    <div class="status-item"><span class="label">Δt, нс:</span><span class="value" id="st-toffs">–</span></div>
+
+    <div class="status-item"><span class="label">PLL Osc, dBm:</span><span class="value" id="st-pll-osc">–</span></div>
+    <div class="status-item"><span class="label">PLL Ref, dBm:</span><span class="value" id="st-pll-ref">–</span></div>
+
+    <div class="status-item"><span class="label">Lock, V:</span><span class="value" id="st-pll-lock">–</span></div>
+    <div class="status-item"><span class="label">PLL, V:</span><span class="value" id="st-pll-pll">–</span></div>
+
+    <div class="status-item"><span class="label">Ext ref err:</span><span class="value" id="st-sre-ext">–</span></div>
+    <div class="status-item"><span class="label">Int osc err:</span><span class="value" id="st-sre-int">–</span></div>
+
+    <div class="status-item"><span class="label">PLL lock err:</span><span class="value" id="st-sre-pll">–</span></div>
+    <div class="status-item"><span class="label">Tuning volt err:</span><span class="value" id="st-sre-tune">–</span></div>
+
+    <div class="status-item"><span class="label">Invalid param:</span><span class="value" id="st-sre-param">–</span></div>
+    <div class="status-item"><span class="label">Invalid cmd:</span><span class="value" id="st-sre-cmd">–</span></div>
+  </div>
+
+  <div class="auto-refresh-row">
+    <input type="checkbox" id="auto-refresh">
+    <label for="auto-refresh" style="margin:0;">Автообновление GET_STATUS каждые</label>
+    <input type="number" id="refresh-interval" min="1" value="5">
+    <span>сек.</span>
+  </div>
+</div>

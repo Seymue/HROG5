@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hrog5
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hrog5"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    image: hrog5-api:0.1.0
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:password@db:5432/hrog5
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8084:8000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

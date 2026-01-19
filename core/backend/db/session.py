@@ -1,16 +1,20 @@
 # core/backend/db/session.py
 
+from __future__ import annotations
+
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from .base import Base
 
-DATABASE_URL = "postgresql+psycopg2://postgres:password@localhost:5432/hrog5"
-
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+)
 
 engine = create_engine(
     DATABASE_URL,
-    echo=False,        # можно включить True для логов SQL
+    echo=False,
     future=True,
 )
 
@@ -25,6 +29,8 @@ SessionLocal = sessionmaker(
 def init_db() -> None:
     """
     Создать все таблицы в БД на основе ORM-моделей.
-    Для первой инициализации (до Alembic) можно вызвать один раз.
     """
+    # важно: чтобы Base "узнал" про все модели (Device, CommandExecution и т.д.)
+    from core.backend.db import models  # noqa: F401
+
     Base.metadata.create_all(bind=engine)

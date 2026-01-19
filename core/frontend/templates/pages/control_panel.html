@@ -1,0 +1,15 @@
+<!-- core/backend/web/templates/pages/control_panel.html -->
+{% extends "base.html" %}
+
+{% block body %}
+  {% include "components/header.html" %}
+
+  <main>
+    {% include "components/devices_column.html" %}
+    {% include "components/commands_column.html" %}
+  </main>
+{% endblock %}
+
+{% block scripts %}
+  <script defer src="{{ url_for('static', path='js/control_panel.js') }}"></script>
+{% endblock %}

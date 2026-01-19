@@ -1,0 +1,64 @@
+<!-- core/backend/web/templates/components/devices_column.html -->
+<section class="column devices">
+  <div class="column-header">
+    <h2>Устройства</h2>
+    <span id="devices-count">Загрузка...</span>
+  </div>
+
+  <div style="flex:1; overflow:auto; margin-bottom:6px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Имя</th>
+          <th>IP</th>
+          <th>Порт</th>
+          <th>Активно</th>
+        </tr>
+      </thead>
+      <tbody id="devices-table-body"></tbody>
+    </table>
+  </div>
+
+  <div>
+    <div class="dev-form-title">Редактирование устройства</div>
+    <div class="dev-id-display" id="dev-id-display">ID: –</div>
+
+    <div class="form-row">
+      <div class="form-field">
+        <label for="dev-name">Имя</label>
+        <input id="dev-name" type="text" placeholder="Например, HROG-5 №1">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-field">
+        <label for="dev-host">IP-адрес MOXA</label>
+        <input id="dev-host" type="text" placeholder="192.168.1.141">
+      </div>
+      <div class="form-field" style="max-width:80px;">
+        <label for="dev-port">Порт</label>
+        <input id="dev-port" type="number" min="1" max="65535" value="4002">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-field">
+        <label for="dev-desc">Описание</label>
+        <textarea id="dev-desc" placeholder="Место установки, комментарии"></textarea>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-field" style="flex-direction:row;align-items:center;gap:6px;">
+        <input id="dev-enabled" type="checkbox" checked>
+        <label for="dev-enabled" style="margin:0;">Активно (использовать в системе)</label>
+      </div>
+    </div>
+
+    <div class="dev-form-buttons">
+      <button type="button" id="btn-new-device">Новое устройство</button>
+      <button type="button" id="btn-save-device">Сохранить</button>
+      <button type="button" class="button-secondary" id="btn-delete-device">Удалить</button>
+    </div>
+  </div>
+</section>
