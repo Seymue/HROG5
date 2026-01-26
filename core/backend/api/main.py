@@ -1,8 +1,7 @@
-# core/backend/api/main.py
-
 from __future__ import annotations
 
 import os
+import asyncio
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -14,7 +13,11 @@ from core.backend.services.command_service import CommandService
 from core.backend.services.device_pool_init import init_device_pool_from_db
 from core.backend.devices.device_pool import DevicePool
 
-from .routers import devices, commands
+from core.backend.repositories.command_history_repo import SqlAlchemyCommandHistoryRepository
+from core.backend.repositories.status_snapshot_repo import SqlAlchemyStatusSnapshotRepository
+from core.backend.services.status_poller import run_status_poller
+
+from .routers import devices, commands, monitoring
 
 
 def create_app() -> FastAPI:
@@ -26,11 +29,12 @@ def create_app() -> FastAPI:
     # Роутеры API
     app.include_router(devices.router, prefix="/devices", tags=["devices"])
     app.include_router(commands.router, prefix="/commands", tags=["commands"])
+    app.include_router(monitoring.router, prefix="/monitoring", tags=["monitoring"])
 
     # ---- Пути к фронтенду: core/frontend ----
-    current_dir = os.path.dirname(os.path.abspath(__file__))           # core/backend/api
-    project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))  # core
-    frontend_dir = os.path.join(project_root, "frontend")              # core/frontend
+    current_dir = os.path.dirname(os.path.abspath(__file__))              # core/backend/api
+    project_root = os.path.abspath(os.path.join(current_dir, "..", "..")) # core
+    frontend_dir = os.path.join(project_root, "frontend")                 # core/frontend
 
     templates_dir = os.path.join(frontend_dir, "templates")
     static_dir = os.path.join(frontend_dir, "static")
@@ -54,9 +58,15 @@ def create_app() -> FastAPI:
 
         @app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
         def ui_page(request: Request):
-            # pages/control_panel.html — главный "конструктор"
             return templates.TemplateResponse(
                 "pages/control_panel.html",
+                {"request": request},
+            )
+
+        @app.get("/ui/monitor", response_class=HTMLResponse, include_in_schema=False)
+        def ui_monitor_page(request: Request):
+            return templates.TemplateResponse(
+                "pages/monitoring.html",
                 {"request": request},
             )
 
@@ -72,17 +82,49 @@ def create_app() -> FastAPI:
     app.state.device_pool = None
     app.state.command_service = None
 
+    app.state.status_snapshot_repo = None
+    app.state.status_poller_stop = None
+    app.state.status_poller_task = None
+
     @app.on_event("startup")
-    def on_startup() -> None:
+    async def on_startup() -> None:
         init_db()
+
         with SessionLocal() as session:
             device_pool: DevicePool = init_device_pool_from_db(session)
 
+        # репозитории, которые сами открывают сессии
+        cmd_repo = SqlAlchemyCommandHistoryRepository(SessionLocal)
+        status_repo = SqlAlchemyStatusSnapshotRepository(SessionLocal)
+
         app.state.device_pool = device_pool
+        app.state.status_snapshot_repo = status_repo
+
         app.state.command_service = CommandService(
             device_pool=device_pool,
-            command_repo=None,
+            command_repo=cmd_repo,
         )
+
+        # фоновый поллер статуса (каждые 5 минут)
+        app.state.status_poller_stop = asyncio.Event()
+        app.state.status_poller_task = asyncio.create_task(
+            run_status_poller(app, interval_sec=300)
+        )
+
+    @app.on_event("shutdown")
+    async def on_shutdown() -> None:
+        stop = getattr(app.state, "status_poller_stop", None)
+        task = getattr(app.state, "status_poller_task", None)
+
+        if stop is not None:
+            stop.set()
+
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     return app
 

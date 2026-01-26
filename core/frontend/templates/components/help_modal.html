@@ -1,0 +1,61 @@
+<div class="modal-backdrop" id="help-backdrop" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Справка</div>
+        <div class="modal-sub">Шпаргалка по управлению и горячие клавиши</div>
+      </div>
+      <button class="icon-btn" id="btn-help-close" type="button" aria-label="Закрыть">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="help-grid">
+        <div class="help-card">
+          <div class="help-h">Ошибки</div>
+          <ul class="help-ul">
+            <li><span class="kbd">EXT</span> — Проблема с внешней опорой 5 MHz</li>
+            <li><span class="kbd">PLL</span> — PLL не залочена на reference (нет “захвата”)</li>
+            <li><span class="kbd">PARAM</span> — Отправлена команда с некорректным параметром (диапазон/формат/единицы)</li>
+              <li><span class="kbd">INT</span> — Проблема с внутренним осциллятором</li>
+              <li><span class="kbd">TUNE</span> — Напряжение подстройки вышло за норму</li>
+              <li><span class="kbd">CMD</span> — Некорректная/неизвестная команда</li>
+              <li><span class="kbd">OSC</span> — Уровень мощности внутреннего генератора. Диапазон от +11,5 до +12,5 дБм.</li>
+              <li><span class="kbd">LOCK</span> — Напряжение детектора блокировки. Диапазон: от 0,2 до 0,35 В.</li>
+              <li><span class="kbd">REF</span> — Уровень мощности внешнего опорного сигнала. Диапазон от +10 до +16 дБм.</li>
+              <li><span class="kbd">TUNE</span> — Настройка напряжения порта на генераторе. Допустимый диапазон: +/- 5 В.</li>
+          </ul>
+        </div>
+
+        <div class="help-card">
+          <div class="help-h">Быстрые команды</div>
+          <ul class="help-ul">
+            <li><b>Синхронизация</b> — SYNC</li>
+            <li><b>Сброс фазы</b> — *RPHS</li>
+            <li><b>Очистка статуса</b> — Сбрасывает ошибку, если устранена</li>
+          </ul>
+        </div>
+
+        <div class="help-card">
+          <div class="help-h">Параметры</div>
+          <ul class="help-ul">
+            <li><b>Частота</b> — SET_FREQ / STEP_FREQ</li>
+            <li><b>Фаза</b> — SET_PHASE / STEP_PHASE</li>
+            <li><b>Временной сдвиг</b> — SET_TIME_OFFSET / STEP_TIME_OFFSET</li>
+          </ul>
+        </div>
+
+        <div class="help-card">
+          <div class="help-h">Примечание</div>
+          <div class="help-p">
+            UI работает строго “под бек”: все данные статуса берутся через команду <span class="mono">GET_STATUS</span>.
+            Если устройство не выбрано — команды заблокированы.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn" id="btn-help-ok" type="button">Понятно</button>
+    </div>
+  </div>
+</div>

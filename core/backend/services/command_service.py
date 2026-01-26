@@ -1,3 +1,5 @@
+# core/backend/services/command_service.py
+
 """
 command_service.py
 
@@ -17,7 +19,7 @@ command_service.py
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional, Protocol, Dict
 
 from core.backend.devices.device_pool import DevicePool, DeviceNotFoundError
@@ -81,6 +83,19 @@ class CommandService:
         ...
     """
 
+    _READ_COMMANDS = {
+        "GET_STATUS",
+        "TEMP?",
+        "FREQ?",
+        "PHAS?",
+        "FFOF?",
+        "PLL?",
+        "TIME?",
+        "DATE?",
+        "PPSW?",
+        "SRE?",
+    }
+
     def __init__(
         self,
         device_pool: DevicePool,
@@ -88,6 +103,25 @@ class CommandService:
     ) -> None:
         self._pool = device_pool
         self._repo = command_repo
+
+    @staticmethod
+    def _utcnow() -> datetime:
+        return datetime.now(timezone.utc)
+
+    @classmethod
+    def _should_log_command(cls, command_code: str) -> bool:
+        """
+        Логируем только "отправляемые" команды.
+        Любые запросы (?...), а также GET_STATUS — НЕ логируем в историю команд.
+        """
+        cmd = (command_code or "").strip().upper()
+        if not cmd:
+            return False
+        if cmd in cls._READ_COMMANDS:
+            return False
+        if cmd.endswith("?"):
+            return False
+        return True
 
     # ---- публичный метод, который дергает UI / API ----
 
@@ -101,19 +135,14 @@ class CommandService:
     ) -> CommandExecutionResult:
         """
         Выполнить команду над конкретным устройством.
-
-        :param device_id: ID устройства (логический или UUID из БД)
-        :param user_id: ID пользователя (если есть авторизация)
-        :param command_code: строка-команда верхнего уровня (см. _run_command)
-        :param params: словарь параметров (например {"freq_hz": 1.0})
         """
         params = params or {}
-        started = datetime.utcnow()
+        started = self._utcnow()
 
         try:
             client = self._pool.get_client(device_id)
         except DeviceNotFoundError as e:
-            finished = datetime.utcnow()
+            finished = self._utcnow()
             result = CommandExecutionResult(
                 success=False,
                 status=str(e),
@@ -139,7 +168,7 @@ class CommandService:
             status = f"error: {e}"
             success = False
 
-        finished = datetime.utcnow()
+        finished = self._utcnow()
         result = CommandExecutionResult(
             success=success,
             status=status,
@@ -211,7 +240,6 @@ class CommandService:
         if cmd == "SET_FREQ":
             freq = float(params["freq_hz"])
             client.set_freq(freq)
-            # можно сразу прочитать обратно
             return {"freq": client.get_freq()}
 
         if cmd == "SET_PHASE":
@@ -278,6 +306,10 @@ class CommandService:
         result: CommandExecutionResult,
     ) -> None:
         if self._repo is None:
+            return
+
+        # ВАЖНО: пишем только "write/action" команды
+        if not self._should_log_command(command_code):
             return
 
         self._repo.save_execution(

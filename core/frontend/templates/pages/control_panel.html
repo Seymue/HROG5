@@ -1,13 +1,36 @@
-<!-- core/backend/web/templates/pages/control_panel.html -->
 {% extends "base.html" %}
 
-{% block body %}
-  {% include "components/header.html" %}
+{% block title %}HROG-5 — Панель управления{% endblock %}
 
-  <main>
-    {% include "components/devices_column.html" %}
-    {% include "components/commands_column.html" %}
-  </main>
+{% block body %}
+  <div class="app">
+    {% include "components/topbar.html" %}
+
+    <div class="content">
+      <div class="grid">
+        <section class="card col-left">
+          {% include "components/devices_list.html" %}
+        </section>
+
+        <section class="card col-center">
+          {% include "components/parameters_panel.html" %}
+        </section>
+
+        <section class="card col-right">
+          {% include "components/quick_commands.html" %}
+          <div class="spacer-12"></div>
+          {% include "components/status_card.html" %}
+          <div class="spacer-12"></div>
+          {% include "components/result_panel.html" %}
+        </section>
+      </div>
+    </div>
+
+    {% include "components/system_bar.html" %}
+  </div>
+
+  {% include "components/help_modal.html" %}
+  {% include "components/device_modal.html" %}
 {% endblock %}
 
 {% block scripts %}

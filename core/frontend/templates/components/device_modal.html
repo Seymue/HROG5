@@ -1,0 +1,54 @@
+<div class="modal-backdrop" id="device-backdrop" hidden>
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="device-modal-title">Устройство</div>
+        <div class="modal-sub" id="device-modal-sub">Добавление / редактирование устройства</div>
+      </div>
+      <button class="icon-btn" id="btn-device-close" type="button" aria-label="Закрыть">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="form-meta mono" id="device-form-meta" style="display:none;"></div>
+
+      <form id="device-form" class="form-grid">
+        <label class="field">
+          <span class="field-label">Имя устройства</span>
+          <input class="field-input" id="dev-name" type="text" placeholder="Напр. HROG-5 #1" required />
+          <span class="field-hint">Должно быть уникальным (в БД стоит unique).</span>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Описание</span>
+          <textarea class="field-input field-textarea" id="dev-desc" placeholder="Место установки, комментарии…"></textarea>
+        </label>
+
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">MOXA host</span>
+            <input class="field-input mono" id="dev-host" type="text" placeholder="192.168.1.141" required />
+          </label>
+
+          <label class="field">
+            <span class="field-label">MOXA port</span>
+            <input class="field-input mono" id="dev-port" type="number" min="1" max="65535" step="1" value="4001" required />
+          </label>
+        </div>
+
+        <label class="field field-inline">
+          <input id="dev-enabled" type="checkbox" checked />
+          <span class="field-label-inline">Устройство включено (is_enabled)</span>
+        </label>
+
+        <div class="muted-note" id="device-form-error" style="display:none; color:var(--bad);">
+          <!-- error text -->
+        </div>
+      </form>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn" id="btn-device-cancel" type="button">Отмена</button>
+      <button class="btn primary" id="btn-device-save" type="submit" form="device-form">Сохранить</button>
+    </div>
+  </div>
+</div>

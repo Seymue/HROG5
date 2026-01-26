@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}HROG-5 — Мониторинг{% endblock %}
+
+{% block body %}
+  <div class="app">
+    {% include "components/topbar_monitoring.html" %}
+
+    <div class="content">
+      <div class="grid">
+        <!-- Left: devices -->
+        <section class="card col-left">
+          <div class="section-head">
+            <div>
+              <div class="section-title">Устройства</div>
+              <div class="section-sub" id="mon-devices-sub">Загрузка…</div>
+            </div>
+            <div class="mini-hint" id="mon-selected-hint">Не выбрано</div>
+          </div>
+
+          <div class="list" id="mon-devices-list" role="list"></div>
+
+          <div class="divider"></div>
+
+          <div class="mini-grid">
+            <div class="mini-item"><span class="tag">LIMIT</span><span class="mono" id="mon-limit-badge">200</span></div>
+            <div class="mini-item"><span class="tag">ОБНОВЛЕНО</span><span class="mono" id="mon-updated">—</span></div>
+          </div>
+
+          <div class="chips" style="margin-top:12px;">
+            <button class="chip" data-limit="50" type="button">50</button>
+            <button class="chip" data-limit="200" type="button">200</button>
+            <button class="chip" data-limit="1000" type="button">1000</button>
+          </div>
+
+          <div class="muted-note">
+            Статусы берутся из <span class="mono">status_snapshots</span>, история команд — из <span class="mono">command_history</span>.
+          </div>
+        </section>
+
+        <!-- Center: status snapshots -->
+        <section class="card col-center">
+          <div class="section-head">
+            <div>
+              <div class="section-title">Снимки статуса</div>
+              <div class="section-sub">Последние записи из БД (poller/manual)</div>
+            </div>
+            <div class="pill" id="mon-status-count">—</div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table" id="mon-status-table">
+              <thead>
+                <tr>
+                  <th>Время</th>
+                  <th>OK</th>
+                  <th>Temp</th>
+                  <th>Freq</th>
+                  <th>Phas</th>
+                  <th>SRE</th>
+                  <th>ms</th>
+                  <th>Источник</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="8" class="muted">Выбери устройство слева.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Right: command history -->
+        <section class="card col-right">
+          <div class="section-head compact">
+            <div>
+              <div class="section-title">История команд</div>
+              <div class="section-sub">Последние write/action команды</div>
+            </div>
+            <div class="pill" id="mon-cmd-count">—</div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table" id="mon-cmd-table">
+              <thead>
+                <tr>
+                  <th>Время</th>
+                  <th>Команда</th>
+                  <th>OK</th>
+                  <th>ms</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="4" class="muted">Выбери устройство слева.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="section-head compact">
+            <div>
+              <div class="section-title">Детали</div>
+              <div class="section-sub" id="mon-detail-title">—</div>
+            </div>
+          </div>
+
+          <pre class="log" id="mon-detail-log">Кликни по строке таблицы, чтобы увидеть JSON.</pre>
+        </section>
+      </div>
+    </div>
+
+    {% include "components/system_bar.html" %}
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script defer src="{{ url_for('static', path='js/monitoring.js') }}"></script>
+{% endblock %}

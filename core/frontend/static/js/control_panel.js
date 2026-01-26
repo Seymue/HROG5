@@ -1,492 +1,699 @@
- // --- конфиг параметров команд ---
-    const commandParamsConfig = {
-        "SET_FREQ": [
-            {name: "freq_hz", label: "Частота, Гц", type: "number", step: "0.000001", placeholder: "Например, 0.001"}
-        ],
-        "SET_PHASE": [
-            {name: "phase_deg", label: "Фаза, градусы", type: "number", step: "0.0001", placeholder: "Например, 90.0"}
-        ],
-        "SET_FFOF": [
-            {name: "ffof", label: "Frac freq", type: "number", step: "1e-12", placeholder: "Например, 2e-10"}
-        ],
-        "SET_TIME_OFFSET": [
-            {name: "toffset_ns", label: "Абсолютный сдвиг, нс", type: "number", step: "0.001", placeholder: "Например, 100.0"}
-        ],
-        "STEP_FREQ": [
-            {name: "step_hz", label: "Шаг по частоте, Гц", type: "number", step: "0.000001", placeholder: "Например, 0.001"}
-        ],
-        "STEP_PHASE": [
-            {name: "step_deg", label: "Шаг по фазе, градусы", type: "number", step: "0.0001", placeholder: "Например, 10.0"}
-        ],
-        "STEP_TIME_OFFSET": [
-            {name: "step_ns", label: "Шаг по времени, нс", type: "number", step: "0.001", placeholder: "Например, 10.0"}
-        ],
-        "SET_PPS_WIDTH": [
-            {name: "pwidth_index", label: "Индекс PPS (0–7)", type: "number", step: "1", placeholder: "Например, 4"}
-        ]
-    };
+/* global fetch */
 
-    let devices = [];
-    let selectedDeviceId = null;   // для команд
-    let editingDeviceId = null;    // для формы
-    let autoRefreshTimer = null;
+const API = {
+  devices: "/devices/",
+  execute: "/commands/execute",
+};
 
-    const devicesTableBody = document.getElementById("devices-table-body");
-    const devicesCountLabel = document.getElementById("devices-count");
-    const selectedDeviceLabel = document.getElementById("selected-device-label");
-    const commandForm = document.getElementById("command-form");
-    const commandCodeSelect = document.getElementById("command-code");
-    const paramsContainer = document.getElementById("params-container");
-    const sendButton = document.getElementById("send-button");
-    const clearResultButton = document.getElementById("clear-result");
-    const statusBar = document.getElementById("status-bar");
-    const commandResult = document.getElementById("command-result");
-    const lastDuration = document.getElementById("last-duration");
+let devices = [];
+let selectedId = null;
+let lastPollOkById = new Map();   // device_id -> boolean
+let errorsCount = 0;
 
-    // поля формы устройств
-    const devIdDisplay = document.getElementById("dev-id-display");
-    const devNameInput = document.getElementById("dev-name");
-    const devHostInput = document.getElementById("dev-host");
-    const devPortInput = document.getElementById("dev-port");
-    const devDescInput = document.getElementById("dev-desc");
-    const devEnabledInput = document.getElementById("dev-enabled");
-    const btnNewDevice = document.getElementById("btn-new-device");
-    const btnSaveDevice = document.getElementById("btn-save-device");
-    const btnDeleteDevice = document.getElementById("btn-delete-device");
+// device modal state
+let deviceModalMode = "create";   // "create" | "edit"
+let deviceModalId = null;
 
-    // элементы панели статуса
-    const stBaud   = document.getElementById("st-baud");
-    const stTemp   = document.getElementById("st-temp");
-    const stFreq   = document.getElementById("st-freq");
-    const stPhase  = document.getElementById("st-phase");
-    const stFfof   = document.getElementById("st-ffof");
-    const stToffs  = document.getElementById("st-toffs");
+const el = (id) => document.getElementById(id);
 
-    const stPllOsc  = document.getElementById("st-pll-osc");
-    const stPllRef  = document.getElementById("st-pll-ref");
-    const stPllLock = document.getElementById("st-pll-lock");
-    const stPllPll  = document.getElementById("st-pll-pll");
+function nowTimeStr() {
+  const d = new Date();
+  return d.toLocaleTimeString("ru-RU", { hour12: false });
+}
+function nowDateStr() {
+  const d = new Date();
+  return d.toLocaleDateString("ru-RU", { year: "numeric", month: "long", day: "2-digit" });
+}
 
-    const stSreExt   = document.getElementById("st-sre-ext");
-    const stSreInt   = document.getElementById("st-sre-int");
-    const stSrePll   = document.getElementById("st-sre-pll");
-    const stSreTune  = document.getElementById("st-sre-tune");
-    const stSreParam = document.getElementById("st-sre-param");
-    const stSreCmd   = document.getElementById("st-sre-cmd");
+function setConn(ok, text) {
+  const dot = el("conn-dot");
+  const t = el("conn-text");
+  dot.classList.remove("ok", "bad");
+  if (ok === true) dot.classList.add("ok");
+  if (ok === false) dot.classList.add("bad");
+  t.textContent = text;
+}
 
-    const autoRefreshCheckbox = document.getElementById("auto-refresh");
-    const refreshIntervalInput = document.getElementById("refresh-interval");
+function setEnabledUI(enabled) {
+  // quick buttons
+  el("btn-sync").disabled = !enabled;
+  el("btn-reset-phase").disabled = !enabled;
+  el("btn-clear-status").disabled = !enabled;
 
-    // ---- Загрузка и отрисовка устройств ----
-    async function loadDevices() {
-        devicesTableBody.innerHTML = "<tr><td colspan='4'>Загрузка...</td></tr>";
-        try {
-            const resp = await fetch("/devices");
-            if (!resp.ok) throw new Error("HTTP " + resp.status);
-            devices = await resp.json();
-            renderDevicesTable();
-        } catch (e) {
-            devicesTableBody.innerHTML =
-                `<tr><td colspan="4" style="color:#f97373;">Ошибка загрузки устройств: ${e}</td></tr>`;
-            devicesCountLabel.textContent = "Ошибка";
-        }
+  // inputs
+  el("freq-input").disabled = !enabled;
+  el("phase-input").disabled = !enabled;
+  el("toffs-input").disabled = !enabled;
+
+  // plus/minus
+  el("freq-minus").disabled = !enabled;
+  el("freq-plus").disabled = !enabled;
+  el("phase-minus").disabled = !enabled;
+  el("phase-plus").disabled = !enabled;
+  el("toffs-minus").disabled = !enabled;
+  el("toffs-plus").disabled = !enabled;
+
+  // chips
+  document.querySelectorAll(".chip").forEach((b) => (b.disabled = !enabled));
+  el("btn-refresh").disabled = !enabled;
+}
+
+function setDeviceActionsEnabled() {
+  const hasSel = !!selectedId;
+  el("btn-device-edit").disabled = !hasSel;
+  el("btn-device-delete").disabled = !hasSel;
+}
+
+async function apiGetJson(url) {
+  const resp = await fetch(url, { method: "GET" });
+  const json = await resp.json();
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${JSON.stringify(json)}`);
+  return json;
+}
+
+async function apiSendJson(method, url, body) {
+  const resp = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : null,
+  });
+
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${JSON.stringify(json)}`);
+  return json;
+}
+
+async function apiDelete(method, url) {
+  const resp = await fetch(url, { method });
+  if (!resp.ok) {
+    const json = await resp.json().catch(() => ({}));
+    throw new Error(`HTTP ${resp.status}: ${JSON.stringify(json)}`);
+  }
+}
+
+async function runCommand(command_code, params = null) {
+  if (!selectedId) throw new Error("Устройство не выбрано");
+
+  const body = {
+    device_id: selectedId,
+    command_code,
+    params,
+    user_id: null,
+  };
+
+  const resp = await fetch(API.execute, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(`HTTP ${resp.status}: ${JSON.stringify(json)}`);
+  }
+  return json; // CommandResponse
+}
+
+function renderDevices() {
+  const list = el("devices-list");
+  list.innerHTML = "";
+
+  devices.forEach((d) => {
+    const item = document.createElement("div");
+    item.className = "device-item";
+    if (d.id === selectedId) item.classList.add("selected");
+
+    const enabled = !!d.is_enabled;
+    const dot = document.createElement("div");
+    dot.className = "dot";
+    if (!enabled) dot.classList.add("off");
+    else {
+      const polled = lastPollOkById.get(d.id);
+      if (polled === false) dot.classList.add("bad");
+      else dot.classList.add("ok");
     }
 
-    function renderDevicesTable() {
-        if (!devices.length) {
-            devicesTableBody.innerHTML =
-                "<tr><td colspan='4'>Устройств нет. Добавь записи в таблицу devices.</td></tr>";
-            devicesCountLabel.textContent = "0 устройств";
-            return;
-        }
+    const left = document.createElement("div");
+    left.className = "device-left";
 
-        devicesTableBody.innerHTML = "";
-        devices.forEach((dev) => {
-            const tr = document.createElement("tr");
-            tr.classList.add("device-row");
-            tr.dataset.deviceId = dev.id;
+    const textWrap = document.createElement("div");
+    textWrap.style.minWidth = "0";
 
-            if (dev.id === selectedDeviceId) tr.classList.add("selected");
+    const name = document.createElement("div");
+    name.className = "device-name";
+    name.textContent = d.name;
 
-            tr.innerHTML = `
-                <td>${dev.name}</td>
-                <td>${dev.moxa_host}</td>
-                <td>${dev.moxa_port}</td>
-                <td>${dev.is_enabled ? "Да" : "Нет"}</td>
-            `;
+    const sub = document.createElement("div");
+    sub.className = "device-sub";
+    sub.textContent = `${d.moxa_host}:${d.moxa_port}${enabled ? "" : " • disabled"}`;
 
-            tr.addEventListener("click", () => {
-                selectDevice(dev.id);
-                fillDeviceForm(dev.id);
-            });
+    textWrap.appendChild(name);
+    textWrap.appendChild(sub);
 
-            devicesTableBody.appendChild(tr);
-        });
+    left.appendChild(dot);
+    left.appendChild(textWrap);
 
-        devicesCountLabel.textContent = `${devices.length} устройств`;
+    const meta = document.createElement("div");
+    meta.className = "device-meta";
+    meta.innerHTML = `<div class="mono" style="font-weight:800;">${enabled ? "ON" : "OFF"}</div>
+                      <div class="device-sub">${enabled ? "готово" : "выкл."}</div>`;
+
+    item.appendChild(left);
+    item.appendChild(meta);
+
+    item.addEventListener("click", () => selectDevice(d.id));
+
+    list.appendChild(item);
+  });
+
+  el("devices-subtitle").textContent = `Всего: ${devices.length}`;
+  el("sys-count").textContent = `Устройств: ${devices.length}`;
+  el("sys-errors").textContent = `Ошибок: ${errorsCount}`;
+
+  setDeviceActionsEnabled();
+}
+
+function setDevicePill() {
+  const pill = el("device-pill");
+  const hint = el("selected-device-hint");
+
+  if (!selectedId) {
+    pill.textContent = "Нет устройства";
+    hint.textContent = "Не выбрано";
+    return;
+  }
+  const dev = devices.find((x) => x.id === selectedId);
+  if (!dev) return;
+
+  pill.textContent = dev.name;
+  hint.textContent = dev.name;
+}
+
+function setLastCommand(label, payload) {
+  el("last-command-label").textContent = label;
+  el("result-log").textContent = payload;
+}
+
+function clearStatusView() {
+  el("st-temp").textContent = "—";
+  el("st-freq").textContent = "—";
+  el("st-phase").textContent = "—";
+  el("st-ffof").textContent = "—";
+  el("st-toffs").textContent = "—";
+
+  el("st-sre-badge").textContent = "—";
+  el("sre-ext").textContent = "—";
+  el("sre-int").textContent = "—";
+  el("sre-pll").textContent = "—";
+  el("sre-tune").textContent = "—";
+  el("sre-param").textContent = "—";
+  el("sre-cmd").textContent = "—";
+
+  el("status-updated").textContent = "Нет данных";
+  el("last-duration").textContent = "—";
+
+  el("freq-input").value = "";
+  el("phase-input").value = "";
+  el("toffs-input").value = "";
+
+  el("pll-badge").textContent = "—";
+  el("pll-osc").textContent = "—";
+  el("pll-ref").textContent = "—";
+  el("pll-lock").textContent = "—";
+  el("pll-tune").textContent = "—";
+}
+
+function formatMaybe(v, suffix = "") {
+  if (v === null || v === undefined) return "—";
+  return `${v}${suffix}`;
+}
+
+function flagText(v) {
+  if (v === null || v === undefined) return "—";
+  return v ? "Ошибка" : "OK";
+}
+
+function updateStatusUI(data, durationMs) {
+  el("st-temp").textContent = formatMaybe(data.temperature, " °C");
+  el("st-freq").textContent = formatMaybe(data.freq, " Hz");
+  el("st-phase").textContent = formatMaybe(data.phase, " °");
+  el("st-ffof").textContent = formatMaybe(data.ffof, "");
+  el("st-toffs").textContent = formatMaybe(data.time_offset_ns, " ns");
+
+  // also fill big inputs
+  if (data.freq !== null && data.freq !== undefined) el("freq-input").value = data.freq;
+  if (data.phase !== null && data.phase !== undefined) el("phase-input").value = data.phase;
+  if (data.time_offset_ns !== null && data.time_offset_ns !== undefined) el("toffs-input").value = data.time_offset_ns;
+
+  const sre = data.status_register || {};
+  const pll = data.pll || null;
+  const anyErr = !!(
+    sre.ext_ref_error || sre.int_osc_error || sre.pll_lock_error ||
+    sre.tuning_voltage_error || sre.invalid_parameter || sre.invalid_command
+  );
+
+  el("st-sre-badge").textContent = anyErr ? "Есть ошибки" : "OK";
+  el("sre-ext").textContent = flagText(sre.ext_ref_error);
+  el("sre-int").textContent = flagText(sre.int_osc_error);
+  el("sre-pll").textContent = flagText(sre.pll_lock_error);
+  el("sre-tune").textContent = flagText(sre.tuning_voltage_error);
+  el("sre-param").textContent = flagText(sre.invalid_parameter);
+  el("sre-cmd").textContent = flagText(sre.invalid_command);
+
+  el("status-updated").textContent = `Обновлено: ${nowTimeStr()}`;
+  el("last-duration").textContent = durationMs ? `${durationMs} ms` : "—";
+
+  if (!pll) {
+    el("pll-badge").textContent = "нет данных";
+    el("pll-osc").textContent = "—";
+    el("pll-ref").textContent = "—";
+    el("pll-lock").textContent = "—";
+    el("pll-tune").textContent = "—";
+  } else {
+    el("pll-badge").textContent = "OK";
+    el("pll-osc").textContent = (pll.osc_dbm ?? "—") + (pll.osc_dbm != null ? " dBm" : "");
+    el("pll-ref").textContent = (pll.ref_dbm ?? "—") + (pll.ref_dbm != null ? " dBm" : "");
+    el("pll-lock").textContent = (pll.lock_v ?? "—") + (pll.lock_v != null ? " V" : "");
+    el("pll-tune").textContent = (pll.pll_v ?? "—") + (pll.pll_v != null ? " V" : "");
+  }
+}
+
+async function refreshStatus() {
+  if (!selectedId) return;
+
+  const dev = devices.find((x) => x.id === selectedId);
+  if (!dev) return;
+
+  if (!dev.is_enabled) {
+    setConn(false, "Устройство выключено (disabled).");
+    clearStatusView();
+    lastPollOkById.set(selectedId, false);
+    renderDevices();
+    return;
+  }
+
+  el("btn-refresh").disabled = true;
+  setConn(null, "Обновление статуса…");
+
+  try {
+    const res = await runCommand("GET_STATUS", null);
+    lastPollOkById.set(selectedId, true);
+
+    updateStatusUI(res.data || {}, res.duration_ms);
+    setLastCommand(`GET_STATUS • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
+
+    setConn(true, "Связь OK. Статус обновлён.");
+  } catch (e) {
+    lastPollOkById.set(selectedId, false);
+    errorsCount += 1;
+    el("sys-errors").textContent = `Ошибок: ${errorsCount}`;
+
+    setLastCommand(`GET_STATUS • ошибка • ${nowTimeStr()}`, String(e));
+    setConn(false, `Ошибка обновления статуса: ${e}`);
+  } finally {
+    el("btn-refresh").disabled = false;
+    renderDevices();
+  }
+}
+
+async function selectDevice(id) {
+  selectedId = id;
+  setDevicePill();
+  renderDevices();
+
+  const dev = devices.find((x) => x.id === selectedId);
+  if (!dev) return;
+
+  if (!dev.is_enabled) {
+    setEnabledUI(false);
+    clearStatusView();
+    setConn(false, "Выбрано disabled устройство. Включи его в /devices.");
+    return;
+  }
+
+  setEnabledUI(true);
+  setConn(null, `Выбрано: ${dev.name}. Нажми «Обновить статус» или R.`);
+  await refreshStatus();
+}
+
+function parseNumberInput(id) {
+  const raw = el(id).value;
+  const num = Number(raw);
+  if (!Number.isFinite(num)) throw new Error("Некорректное число");
+  return num;
+}
+
+async function doSet(type) {
+  if (!selectedId) return;
+  if (type === "freq") {
+    const v = parseNumberInput("freq-input");
+    const res = await runCommand("SET_FREQ", { freq_hz: v });
+    setLastCommand(`SET_FREQ • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
+    await refreshStatus();
+  } else if (type === "phase") {
+    const v = parseNumberInput("phase-input");
+    const res = await runCommand("SET_PHASE", { phase_deg: v });
+    setLastCommand(`SET_PHASE • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
+    await refreshStatus();
+  } else if (type === "toffs") {
+    const v = parseNumberInput("toffs-input");
+    const res = await runCommand("SET_TIME_OFFSET", { toffset_ns: v });
+    setLastCommand(`SET_TIME_OFFSET • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
+    await refreshStatus();
+  }
+}
+
+async function doStep(type, delta) {
+  if (!selectedId) return;
+  if (type === "freq") {
+    const res = await runCommand("STEP_FREQ", { step_hz: Number(delta) });
+    setLastCommand(`STEP_FREQ (${delta}) • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
+    await refreshStatus();
+  } else if (type === "phase") {
+    const res = await runCommand("STEP_PHASE", { step_deg: Number(delta) });
+    setLastCommand(`STEP_PHASE (${delta}) • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
+    await refreshStatus();
+  } else if (type === "toffs") {
+    const res = await runCommand("STEP_TIME_OFFSET", { step_ns: Number(delta) });
+    setLastCommand(`STEP_TIME_OFFSET (${delta}) • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
+    await refreshStatus();
+  }
+}
+
+/* -------------------- Help modal -------------------- */
+
+function openHelp(open) {
+  const bd = el("help-backdrop");
+  if (open) bd.hidden = false;
+  else bd.hidden = true;
+}
+
+/* -------------------- Device modal (CRUD) -------------------- */
+
+function openDeviceModal(open) {
+  const bd = el("device-backdrop");
+  bd.hidden = !open;
+  if (open) {
+    el("device-form-error").style.display = "none";
+    el("device-form-error").textContent = "";
+  }
+}
+
+function fillDeviceForm(dev) {
+  el("dev-name").value = dev?.name ?? "";
+  el("dev-desc").value = dev?.description ?? "";
+  el("dev-host").value = dev?.moxa_host ?? "";
+  el("dev-port").value = dev?.moxa_port ?? 4001;
+  el("dev-enabled").checked = dev?.is_enabled ?? true;
+
+  const meta = el("device-form-meta");
+  if (dev?.id) {
+    meta.style.display = "";
+    meta.textContent = `ID: ${dev.id}`;
+  } else {
+    meta.style.display = "none";
+    meta.textContent = "";
+  }
+}
+
+function setDeviceModalMode(mode, dev) {
+  deviceModalMode = mode;
+  deviceModalId = dev?.id ?? null;
+
+  if (mode === "create") {
+    el("device-modal-title").textContent = "Добавить устройство";
+    el("device-modal-sub").textContent = "Создание записи + регистрация в DevicePool (если enabled)";
+    fillDeviceForm(null);
+  } else {
+    el("device-modal-title").textContent = "Изменить устройство";
+    el("device-modal-sub").textContent = "Обновление записи + перерегистрация в DevicePool";
+    fillDeviceForm(dev);
+  }
+
+  openDeviceModal(true);
+  setTimeout(() => el("dev-name").focus(), 0);
+}
+
+function getDeviceFormPayload() {
+  const name = el("dev-name").value.trim();
+  const description = el("dev-desc").value.trim();
+  const host = el("dev-host").value.trim();
+  const port = Number(el("dev-port").value);
+  const enabled = !!el("dev-enabled").checked;
+
+  if (!name) throw new Error("Имя устройства обязательно");
+  if (!host) throw new Error("MOXA host обязателен");
+  if (!Number.isFinite(port) || port < 1 || port > 65535) throw new Error("Некорректный MOXA port");
+
+  return {
+    name,
+    description: description ? description : null,
+    moxa_host: host,
+    moxa_port: port,
+    is_enabled: enabled,
+  };
+}
+
+function showDeviceFormError(err) {
+  const box = el("device-form-error");
+  box.style.display = "";
+  box.textContent = String(err);
+}
+
+async function createDevice(payload) {
+  return await apiSendJson("POST", API.devices, payload);
+}
+
+async function updateDevice(id, payload) {
+  // PUT /devices/{id}
+  return await apiSendJson("PUT", `${API.devices}${id}`, payload);
+}
+
+async function deleteDevice(id) {
+  // DELETE /devices/{id}
+  await apiDelete("DELETE", `${API.devices}${id}`);
+}
+
+async function reloadDevices(preserveSelection = true) {
+  const prevSelected = selectedId;
+  devices = await apiGetJson(API.devices);
+
+  // если выбранное исчезло (удалили) — сбрасываем
+  if (preserveSelection && prevSelected) {
+    const stillThere = devices.some((d) => d.id === prevSelected);
+    if (!stillThere) selectedId = null;
+  }
+
+  renderDevices();
+  setDevicePill();
+
+  if (!selectedId) {
+    setEnabledUI(false);
+    clearStatusView();
+    setConn(null, "Выбери устройство слева.");
+  }
+}
+
+async function onDeviceAdd() {
+  setDeviceModalMode("create", null);
+}
+
+async function onDeviceEdit() {
+  if (!selectedId) return;
+  const dev = devices.find((d) => d.id === selectedId);
+  if (!dev) return;
+  setDeviceModalMode("edit", dev);
+}
+
+async function onDeviceDelete() {
+  if (!selectedId) return;
+  const dev = devices.find((d) => d.id === selectedId);
+  if (!dev) return;
+
+  const ok = window.confirm(`Удалить устройство "${dev.name}"?\n\nЭто удалит запись из БД и уберёт из DevicePool.`);
+  if (!ok) return;
+
+  try {
+    await deleteDevice(dev.id);
+    setLastCommand(`DELETE /devices/${dev.id} • ${nowTimeStr()}`, "Удалено");
+
+    // сброс выбора
+    selectedId = null;
+    setDevicePill();
+    setDeviceActionsEnabled();
+
+    await reloadDevices(false);
+  } catch (e) {
+    errorsCount += 1;
+    renderDevices();
+    setLastCommand(`DELETE • ошибка • ${nowTimeStr()}`, String(e));
+    setConn(false, `Ошибка удаления: ${e}`);
+  }
+}
+
+async function onDeviceFormSubmit(e) {
+  e.preventDefault();
+
+  try {
+    const payload = getDeviceFormPayload();
+
+    if (deviceModalMode === "create") {
+      const created = await createDevice(payload);
+      openDeviceModal(false);
+
+      setLastCommand(`POST /devices • ${nowTimeStr()}`, JSON.stringify(created, null, 2));
+
+      // обновляем список и выбираем созданное
+      await reloadDevices(false);
+      selectedId = created.id;
+      setDevicePill();
+      renderDevices();
+      await selectDevice(created.id);
+    } else {
+      if (!deviceModalId) throw new Error("Нет ID для обновления");
+      const updated = await updateDevice(deviceModalId, payload);
+      openDeviceModal(false);
+
+      setLastCommand(`PUT /devices/${deviceModalId} • ${nowTimeStr()}`, JSON.stringify(updated, null, 2));
+
+      // обновляем список и остаёмся на том же устройстве
+      await reloadDevices(true);
+      if (selectedId) await selectDevice(selectedId);
     }
+  } catch (err) {
+    showDeviceFormError(err);
+  }
+}
 
-    function selectDevice(deviceId) {
-        selectedDeviceId = deviceId;
+/* -------------------- Wiring -------------------- */
 
-        document.querySelectorAll("tr.device-row").forEach((row) => {
-            row.classList.toggle("selected", row.dataset.deviceId === deviceId);
-        });
+function wireUI() {
+  // system time
+  el("sys-date").textContent = nowDateStr();
+  setInterval(() => (el("sys-time").textContent = nowTimeStr()), 250);
+  el("sys-time").textContent = nowTimeStr();
 
-        const dev = devices.find(d => d.id === deviceId);
-        if (dev) {
-            selectedDeviceLabel.textContent = `Выбрано: ${dev.name}`;
-            statusBar.innerHTML = `Устройство: <span class="value">${dev.name}</span>`;
-        } else {
-            selectedDeviceLabel.textContent = "Устройство не выбрано";
-            statusBar.innerHTML = `Устройство: <span class="value">не выбрано</span>`;
-        }
+  // topbar
+  el("btn-refresh").addEventListener("click", refreshStatus);
+  el("btn-help").addEventListener("click", () => openHelp(true));
 
-        sendButton.disabled = !selectedDeviceId;
+  // help modal
+  el("btn-help-close").addEventListener("click", () => openHelp(false));
+  el("btn-help-ok").addEventListener("click", () => openHelp(false));
+  el("help-backdrop").addEventListener("click", (e) => {
+    if (e.target === el("help-backdrop")) openHelp(false);
+  });
 
-        // если включено автообновление — сразу дернуть GET_STATUS
-        if (autoRefreshCheckbox.checked && selectedDeviceId) {
-            pollStatusOnce();
-        }
+  // device CRUD buttons
+  el("btn-device-add").addEventListener("click", onDeviceAdd);
+  el("btn-device-edit").addEventListener("click", onDeviceEdit);
+  el("btn-device-delete").addEventListener("click", onDeviceDelete);
+
+  // device modal close
+  el("btn-device-close").addEventListener("click", () => openDeviceModal(false));
+  el("btn-device-cancel").addEventListener("click", () => openDeviceModal(false));
+  el("device-backdrop").addEventListener("click", (e) => {
+    if (e.target === el("device-backdrop")) openDeviceModal(false);
+  });
+  el("device-form").addEventListener("submit", onDeviceFormSubmit);
+
+  // quick commands
+  el("btn-sync").addEventListener("click", async () => {
+    try {
+      const res = await runCommand("SYNC", null);
+      setLastCommand(`SYNC • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
+      await refreshStatus();
+    } catch (e) {
+      setLastCommand(`SYNC • ошибка • ${nowTimeStr()}`, String(e));
     }
+  });
 
-    // ---- Форма устройства ----
-    function clearDeviceForm() {
-        editingDeviceId = null;
-        devIdDisplay.textContent = "ID: – (новое устройство)";
-        devNameInput.value = "";
-        devHostInput.value = "";
-        devPortInput.value = "4002";
-        devDescInput.value = "";
-        devEnabledInput.checked = true;
-
-        document.querySelectorAll("tr.device-row").forEach((row) => {
-            row.classList.remove("selected");
-        });
-        selectedDeviceLabel.textContent = "Устройство не выбрано";
-        statusBar.innerHTML = `Устройство: <span class="value">не выбрано</span>`;
-        selectedDeviceId = null;
-        sendButton.disabled = true;
+  el("btn-reset-phase").addEventListener("click", async () => {
+    try {
+      const res = await runCommand("RESET_PHASE_COUNTER", null);
+      setLastCommand(`*RPHS • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
+      await refreshStatus();
+    } catch (e) {
+      setLastCommand(`*RPHS • ошибка • ${nowTimeStr()}`, String(e));
     }
+  });
 
-    function fillDeviceForm(deviceId) {
-        const dev = devices.find(d => d.id === deviceId);
-        if (!dev) return;
-        editingDeviceId = dev.id;
-        devIdDisplay.textContent = "ID: " + dev.id;
-        devNameInput.value = dev.name || "";
-        devHostInput.value = dev.moxa_host || "";
-        devPortInput.value = dev.moxa_port || "";
-        devDescInput.value = dev.description || "";
-        devEnabledInput.checked = !!dev.is_enabled;
+  el("btn-clear-status").addEventListener("click", async () => {
+    try {
+      const res = await runCommand("CLEAR_STATUS", null);
+      setLastCommand(`*CLS • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
+      await refreshStatus();
+    } catch (e) {
+      setLastCommand(`*CLS • ошибка • ${nowTimeStr()}`, String(e));
     }
+  });
 
-    async function saveDevice() {
-        const name = devNameInput.value.trim();
-        const host = devHostInput.value.trim();
-        const port = Number(devPortInput.value) || 0;
-        const desc = devDescInput.value.trim() || null;
-        const enabled = devEnabledInput.checked;
+  // params +/- (default steps)
+  el("freq-minus").addEventListener("click", () => doStep("freq", -0.001));
+  el("freq-plus").addEventListener("click", () => doStep("freq", 0.001));
+  el("phase-minus").addEventListener("click", () => doStep("phase", -1));
+  el("phase-plus").addEventListener("click", () => doStep("phase", 1));
+  el("toffs-minus").addEventListener("click", () => doStep("toffs", -1));
+  el("toffs-plus").addEventListener("click", () => doStep("toffs", 1));
 
-        if (!name || !host || !port) {
-            alert("Имя, IP и порт обязательны.");
-            return;
-        }
-
-        const payload = {
-            name: name,
-            moxa_host: host,
-            moxa_port: port,
-            description: desc,
-            is_enabled: enabled
-        };
-
-        try {
-            let resp;
-            if (editingDeviceId) {
-                resp = await fetch(`/devices/${editingDeviceId}`, {
-                    method: "PUT",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify(payload)
-                });
-            } else {
-                resp = await fetch("/devices", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify(payload)
-                });
-            }
-
-            if (!resp.ok) {
-                const text = await resp.text();
-                alert("Ошибка сохранения устройства: " + resp.status + " " + text);
-                return;
-            }
-
-            const dev = await resp.json();
-            await loadDevices();
-            selectDevice(dev.id);
-            fillDeviceForm(dev.id);
-        } catch (e) {
-            alert("Ошибка сети при сохранении: " + e);
-        }
-    }
-
-    async function deleteDevice() {
-        if (!editingDeviceId) {
-            alert("Сначала выбери устройство для удаления.");
-            return;
-        }
-        if (!confirm("Точно удалить это устройство?")) return;
-
-        try {
-            const resp = await fetch(`/devices/${editingDeviceId}`, { method: "DELETE" });
-            if (!resp.ok) {
-                const text = await resp.text();
-                alert("Ошибка удаления: " + resp.status + " " + text);
-                return;
-            }
-            await loadDevices();
-            clearDeviceForm();
-        } catch (e) {
-            alert("Ошибка сети при удалении: " + e);
-        }
-    }
-
-    // ---- Параметры команд ----
-    function renderParamsFields() {
-        const cmd = commandCodeSelect.value;
-        const cfg = commandParamsConfig[cmd];
-        paramsContainer.innerHTML = "";
-        if (!cfg) return;
-
-        cfg.forEach(field => {
-            const wrapper = document.createElement("div");
-            wrapper.classList.add("form-row");
-            wrapper.innerHTML = `
-                <div class="form-field">
-                  <label for="param-${field.name}">${field.label}</label>
-                  <input
-                    id="param-${field.name}"
-                    name="${field.name}"
-                    type="${field.type}"
-                    step="${field.step || "any"}"
-                    placeholder="${field.placeholder || ""}"
-                    required
-                  >
-                </div>
-            `;
-            paramsContainer.appendChild(wrapper);
-        });
-    }
-
-    // ---- панель статуса ----
-    function setStatusValue(el, value, good = null) {
-        el.textContent = value;
-        el.classList.remove("value-ok", "value-bad");
-        if (good === true) el.classList.add("value-ok");
-        if (good === false) el.classList.add("value-bad");
-    }
-
-    function clearStatusPanel() {
-        [
-            stBaud, stTemp, stFreq, stPhase, stFfof, stToffs,
-            stPllOsc, stPllRef, stPllLock, stPllPll,
-            stSreExt, stSreInt, stSrePll, stSreTune, stSreParam, stSreCmd
-        ].forEach(el => setStatusValue(el, "–"));
-    }
-
-    function updateStatusPanel(data) {
-        if (!data) {
-            clearStatusPanel();
-            return;
-        }
-
-        setStatusValue(stBaud,  data.baud ?? "–");
-        setStatusValue(stTemp,  data.temperature ?? "–");
-        setStatusValue(stFreq,  data.freq ?? "–");
-        setStatusValue(stPhase, data.phase ?? "–");
-        setStatusValue(stFfof,  data.ffof ?? "–");
-        setStatusValue(stToffs, data.time_offset_ns ?? "–");
-
-        const pll = data.pll || {};
-        setStatusValue(stPllOsc,  pll.osc_dbm ?? "–");
-        setStatusValue(stPllRef,  pll.ref_dbm ?? "–");
-        setStatusValue(stPllLock, pll.lock_v ?? "–");
-        setStatusValue(stPllPll,  pll.pll_v ?? "–");
-
-        const sre = data.status_register || {};
-        // true = ошибка => красным, false = ок => зелёным
-        function flag(el, v) {
-            if (v === undefined || v === null) {
-                setStatusValue(el, "–");
-            } else if (v) {
-                setStatusValue(el, "Ошибка", false);
-            } else {
-                setStatusValue(el, "OK", true);
-            }
-        }
-
-        flag(stSreExt,   sre.ext_ref_error);
-        flag(stSreInt,   sre.int_osc_error);
-        flag(stSrePll,   sre.pll_lock_error);
-        flag(stSreTune,  sre.tuning_voltage_error);
-        flag(stSreParam, sre.invalid_parameter);
-        flag(stSreCmd,   sre.invalid_command);
-    }
-
-    // ---- Выполнение команд ----
-    async function executeCommand(event) {
-        event.preventDefault();
-        if (!selectedDeviceId) {
-            alert("Сначала выбери устройство в списке слева.");
-            return;
-        }
-
-        const cmd = commandCodeSelect.value;
-        const userId = null; // авторизация пока не используем
-
-        const params = {};
-        const cfg = commandParamsConfig[cmd];
-        if (cfg) {
-            for (const field of cfg) {
-                const input = document.getElementById("param-" + field.name);
-                if (!input) continue;
-                const raw = input.value;
-                if (raw === "") continue;
-                if (field.type === "number") {
-                    const num = Number(raw);
-                    if (isNaN(num)) {
-                        alert(`Поле "${field.label}" должно быть числом.`);
-                        return;
-                    }
-                    params[field.name] = num;
-                } else {
-                    params[field.name] = raw;
-                }
-            }
-        }
-
-        await runCommand(cmd, params, true);
-    }
-
-    async function runCommand(cmd, params = {}, fromButton = false) {
-        if (!selectedDeviceId) return;
-
-        if (fromButton) {
-            sendButton.disabled = true;
-            sendButton.textContent = "Выполнение...";
-            statusBar.innerHTML = `Выполнение команды <span class="value">${cmd}</span>…`;
-        }
-
-        try {
-            const body = {
-                device_id: selectedDeviceId,
-                command_code: cmd,
-                params: (params && Object.keys(params).length) ? params : null,
-                user_id: null,
-            };
-
-            const resp = await fetch("/commands/execute", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify(body),
-            });
-
-            const json = await resp.json();
-
-            if (!resp.ok) {
-                if (fromButton) {
-                    commandResult.textContent =
-                        "Ошибка HTTP " + resp.status + ":\n" + JSON.stringify(json, null, 2);
-                    statusBar.innerHTML = '<span class="error">Ошибка выполнения команды.</span>';
-                    lastDuration.textContent = "–";
-                }
-            } else {
-                // для GET_STATUS обновляем панель
-                if (cmd === "GET_STATUS") {
-                    updateStatusPanel(json.data);
-                }
-
-                if (fromButton) {
-                    commandResult.textContent =
-                        json.data ? JSON.stringify(json.data, null, 2) : "(пусто)";
-                    statusBar.innerHTML = 'Статус: <span class="value">' + json.status + '</span>';
-                    lastDuration.textContent = json.duration_ms + " ms";
-                } else if (cmd === "GET_STATUS") {
-                    // автообновление: обновим подпись
-                    lastDuration.textContent = json.duration_ms + " ms (auto)";
-                }
-            }
-
-        } catch (e) {
-            if (fromButton) {
-                commandResult.textContent = "Ошибка запроса:\n" + e;
-                statusBar.innerHTML = '<span class="error">Ошибка сети или сервера.</span>';
-                lastDuration.textContent = "–";
-            }
-        } finally {
-            if (fromButton) {
-                sendButton.disabled = !selectedDeviceId;
-                sendButton.textContent = "Отправить команду";
-            }
-        }
-    }
-
-    async function pollStatusOnce() {
-        if (!selectedDeviceId) return;
-        await runCommand("GET_STATUS", {}, false);
-    }
-
-    function clearResult() {
-        commandResult.textContent = "Пока ничего не отправляли.";
-        lastDuration.textContent = "–";
-    }
-
-    function handleAutoRefreshToggle() {
-        if (autoRefreshTimer) {
-            clearInterval(autoRefreshTimer);
-            autoRefreshTimer = null;
-        }
-
-        if (!autoRefreshCheckbox.checked) {
-            return;
-        }
-
-        const intervalSec = Number(refreshIntervalInput.value) || 0;
-        if (intervalSec <= 0) {
-            alert("Интервал должен быть >= 1 секунды.");
-            autoRefreshCheckbox.checked = false;
-            return;
-        }
-
-        if (!selectedDeviceId) {
-            alert("Сначала выбери устройство для автообновления.");
-            autoRefreshCheckbox.checked = false;
-            return;
-        }
-
-        // первый запрос сразу
-        pollStatusOnce();
-        autoRefreshTimer = setInterval(pollStatusOnce, intervalSec * 1000);
-    }
-
-    // ---- init ----
-    window.addEventListener("DOMContentLoaded", () => {
-        loadDevices();
-        renderParamsFields();
-        clearStatusPanel();
-
-        commandCodeSelect.addEventListener("change", renderParamsFields);
-        commandForm.addEventListener("submit", executeCommand);
-        clearResultButton.addEventListener("click", clearResult);
-
-        btnNewDevice.addEventListener("click", clearDeviceForm);
-        btnSaveDevice.addEventListener("click", saveDevice);
-        btnDeleteDevice.addEventListener("click", deleteDevice);
-
-        autoRefreshCheckbox.addEventListener("change", handleAutoRefreshToggle);
-        refreshIntervalInput.addEventListener("change", () => {
-            if (autoRefreshCheckbox.checked) handleAutoRefreshToggle();
-        });
+  // chips
+  document.querySelectorAll(".chip").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const stepType = btn.getAttribute("data-step-type");
+      const step = btn.getAttribute("data-step");
+      const setType = btn.getAttribute("data-set-type");
+      try {
+        if (stepType && step !== null) await doStep(stepType, step);
+        if (setType) await doSet(setType);
+      } catch (e) {
+        setLastCommand(`Ошибка • ${nowTimeStr()}`, String(e));
+      }
     });
+  });
+
+  // log clear
+  el("btn-clear-log").addEventListener("click", () => {
+    el("result-log").textContent = "Лог очищен.";
+    el("last-command-label").textContent = "—";
+  });
+
+  // hotkeys
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      openHelp(false);
+      openDeviceModal(false);
+    }
+    if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+      const bd = el("help-backdrop");
+      openHelp(bd.hidden);
+    }
+    if (e.key.toLowerCase() === "r") {
+      if (!el("btn-refresh").disabled) refreshStatus();
+    }
+  });
+}
+
+async function loadDevices() {
+  el("devices-subtitle").textContent = "Загрузка…";
+  try {
+    devices = await apiGetJson(API.devices);
+    errorsCount = 0;
+
+    renderDevices();
+    setDeviceActionsEnabled();
+
+    setEnabledUI(false);
+    setConn(null, "Выбери устройство слева.");
+    clearStatusView();
+  } catch (e) {
+    el("devices-subtitle").textContent = "Ошибка загрузки";
+    el("devices-list").innerHTML = `<div class="muted-note" style="color:var(--bad);">Ошибка: ${e}</div>`;
+    setConn(false, `Ошибка загрузки устройств: ${e}`);
+  }
+}
+
+window.addEventListener("DOMContentLoaded", async () => {
+  wireUI();
+  await loadDevices();
+  setDevicePill();
+});
