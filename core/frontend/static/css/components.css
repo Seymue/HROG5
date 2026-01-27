@@ -360,10 +360,15 @@
   gap: 8px;
 }
 .devices-actions{
-  display:flex;
+  display: flex;
   gap: 8px;
-  flex-wrap: wrap;
-  justify-content:flex-end;
+  flex-wrap: nowrap;      /* ← было wrap */
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.devices-actions .btn{
+  white-space: nowrap;    /* чтобы текст не ломался */
 }
 
 /* Modal wide + form */

@@ -10,9 +10,13 @@ let devices = [];
 let selectedId = null;
 let limit = 200;
 
-let autoTimer = null;
-
 const el = (id) => document.getElementById(id);
+
+function on(id, evt, handler) {
+  const node = el(id);
+  if (!node) return;
+  node.addEventListener(evt, handler);
+}
 
 function nowTimeStr() {
   const d = new Date();
@@ -32,8 +36,83 @@ async function apiGetJson(url) {
   return json;
 }
 
+/* -------------------- Menu (popover navigation) -------------------- */
+
+function wireMenu() {
+  const btn = el("btn-menu");
+  const menu = el("app-menu");
+  if (!btn || !menu) return;
+
+  const items = Array.from(menu.querySelectorAll(".menu-item[data-href]"));
+
+  function normPath(p) {
+    try {
+      const u = new URL(p, window.location.origin);
+      return u.pathname.replace(/\/+$/, "") || "/";
+    } catch {
+      return (p || "").replace(/\/+$/, "") || "/";
+    }
+  }
+
+  function syncActive() {
+    const cur = normPath(window.location.pathname);
+    items.forEach((it) => {
+      const href = it.getAttribute("data-href") || "/";
+      const isActive = normPath(href) === cur;
+      it.classList.toggle("active", isActive);
+      it.disabled = isActive;
+    });
+  }
+
+  function openMenu() {
+    syncActive();
+    menu.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+  }
+
+  function closeMenu() {
+    menu.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleMenu() {
+    if (menu.hidden) openMenu();
+    else closeMenu();
+  }
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleMenu();
+  });
+
+  items.forEach((it) => {
+    it.addEventListener("click", () => {
+      const href = it.getAttribute("data-href");
+      if (!href) return;
+      closeMenu();
+      window.location.href = href;
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (menu.hidden) return;
+    if (menu.contains(e.target) || btn.contains(e.target)) return;
+    closeMenu();
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeMenu();
+  });
+
+  closeMenu();
+  syncActive();
+}
+
+/* -------------------- Devices list -------------------- */
+
 function renderDevices() {
   const list = el("mon-devices-list");
+  if (!list) return;
   list.innerHTML = "";
 
   devices.forEach((d) => {
@@ -79,11 +158,12 @@ function renderDevices() {
     list.appendChild(item);
   });
 
-  el("mon-devices-sub").textContent = `Всего: ${devices.length}`;
+  if (el("mon-devices-sub")) el("mon-devices-sub").textContent = `Всего: ${devices.length}`;
 }
 
 function setSelectedHint() {
   const hint = el("mon-selected-hint");
+  if (!hint) return;
   if (!selectedId) {
     hint.textContent = "Не выбрано";
     return;
@@ -93,9 +173,11 @@ function setSelectedHint() {
 }
 
 function setDetail(title, payload) {
-  el("mon-detail-title").textContent = title;
-  el("mon-detail-log").textContent = payload;
+  if (el("mon-detail-title")) el("mon-detail-title").textContent = title;
+  if (el("mon-detail-log")) el("mon-detail-log").textContent = payload;
 }
+
+/* -------------------- Tables -------------------- */
 
 function anySreError(sre) {
   if (!sre) return false;
@@ -111,10 +193,13 @@ function anySreError(sre) {
 
 function renderStatusTable(rows) {
   const table = el("mon-status-table");
+  if (!table) return;
+
   const tbody = table.querySelector("tbody");
+  if (!tbody) return;
   tbody.innerHTML = "";
 
-  el("mon-status-count").textContent = rows ? `${rows.length}` : "0";
+  if (el("mon-status-count")) el("mon-status-count").textContent = rows ? `${rows.length}` : "0";
 
   if (!rows || rows.length === 0) {
     const tr = document.createElement("tr");
@@ -160,10 +245,13 @@ function renderStatusTable(rows) {
 
 function renderCmdTable(rows) {
   const table = el("mon-cmd-table");
+  if (!table) return;
+
   const tbody = table.querySelector("tbody");
+  if (!tbody) return;
   tbody.innerHTML = "";
 
-  el("mon-cmd-count").textContent = rows ? `${rows.length}` : "0";
+  if (el("mon-cmd-count")) el("mon-cmd-count").textContent = rows ? `${rows.length}` : "0";
 
   if (!rows || rows.length === 0) {
     const tr = document.createElement("tr");
@@ -195,10 +283,12 @@ function renderCmdTable(rows) {
   });
 }
 
+/* -------------------- Data load -------------------- */
+
 async function loadMonitoringData() {
   if (!selectedId) return;
 
-  el("mon-limit-badge").textContent = String(limit);
+  if (el("mon-limit-badge")) el("mon-limit-badge").textContent = String(limit);
 
   const statusUrl = `${API.status}?device_id=${encodeURIComponent(selectedId)}&limit=${limit}`;
   const cmdUrl = `${API.commands}?device_id=${encodeURIComponent(selectedId)}&limit=${limit}`;
@@ -211,7 +301,7 @@ async function loadMonitoringData() {
   renderStatusTable(snapshots);
   renderCmdTable(commands);
 
-  el("mon-updated").textContent = nowTimeStr();
+  if (el("mon-updated")) el("mon-updated").textContent = nowTimeStr();
 }
 
 async function selectDevice(id) {
@@ -228,25 +318,12 @@ async function selectDevice(id) {
   }
 }
 
-function setAuto(on) {
-  if (autoTimer) {
-    clearInterval(autoTimer);
-    autoTimer = null;
-  }
-  if (on) {
-    autoTimer = setInterval(async () => {
-      try {
-        await loadMonitoringData();
-      } catch (e) {
-        // не спамим алертами, просто показываем в деталях
-        setDetail("Ошибка автообновления", String(e));
-      }
-    }, 5000);
-  }
-}
+/* -------------------- Wiring -------------------- */
 
 function wireUI() {
-  el("btn-mon-refresh").addEventListener("click", async () => {
+  wireMenu();
+
+  on("btn-mon-refresh", "click", async () => {
     try {
       await loadMonitoringData();
     } catch (e) {
@@ -254,14 +331,11 @@ function wireUI() {
     }
   });
 
-  el("mon-auto").addEventListener("change", (e) => {
-    setAuto(!!e.target.checked);
-  });
-
   document.querySelectorAll("[data-limit]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       limit = Number(btn.getAttribute("data-limit") || "200");
-      el("mon-limit-badge").textContent = String(limit);
+      if (el("mon-limit-badge")) el("mon-limit-badge").textContent = String(limit);
+
       if (selectedId) {
         try {
           await loadMonitoringData();
@@ -274,13 +348,14 @@ function wireUI() {
 
   window.addEventListener("keydown", (e) => {
     if (e.key.toLowerCase() === "r") {
-      el("btn-mon-refresh").click();
+      const b = el("btn-mon-refresh");
+      if (b) b.click();
     }
   });
 }
 
 async function loadDevices() {
-  el("mon-devices-sub").textContent = "Загрузка…";
+  if (el("mon-devices-sub")) el("mon-devices-sub").textContent = "Загрузка…";
   devices = await apiGetJson(API.devices);
   renderDevices();
   setSelectedHint();
@@ -291,7 +366,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   try {
     await loadDevices();
   } catch (e) {
-    el("mon-devices-sub").textContent = "Ошибка загрузки";
+    if (el("mon-devices-sub")) el("mon-devices-sub").textContent = "Ошибка загрузки";
     setDetail("Ошибка", String(e));
   }
 });
