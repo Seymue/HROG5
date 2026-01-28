@@ -62,6 +62,36 @@
     </div>
   </div>
 
+    <!-- FFOF (fractional offset) -->
+<div class="param-block">
+  <div class="param-head">
+    <div class="param-title">Дробный частотный сдвиг</div>
+    <div class="param-unit">FFOF</div>
+  </div>
+
+  <div class="param-row">
+    <button class="step-btn" id="ffof-minus" type="button" aria-label="Уменьшить FFOF">−</button>
+
+    <div class="value-box">
+      <!-- лучше text, чтобы спокойно вводить 1e-12 / 2.0E-10 -->
+      <input class="value-input mono" id="ffof-input" type="text" placeholder="—" disabled>
+      <div class="value-hint" id="ffof-hint">FFOF?</div>
+    </div>
+
+    <button class="step-btn" id="ffof-plus" type="button" aria-label="Увеличить FFOF">+</button>
+  </div>
+
+  <div class="chips">
+    <button class="chip" data-step-type="ffof" data-step="1e-10" type="button">+1e−10</button>
+    <button class="chip" data-step-type="ffof" data-step="-1e-10" type="button">−1e−10</button>
+    <button class="chip" data-step-type="ffof" data-step="1e-12" type="button">+1e−12</button>
+    <button class="chip" data-step-type="ffof" data-step="-1e-12" type="button">−1e−12</button>
+
+    <button class="chip chip-accent" data-set-type="ffof" type="button">Установить</button>
+  </div>
+</div>
+
+
   <!-- Time offset -->
   <div class="param-block">
     <div class="param-head">
@@ -87,6 +117,35 @@
       <button class="chip" data-step-type="toffs" data-step="-1" type="button">−1 нс</button>
       <button class="chip chip-accent" data-set-type="toffs" type="button">Установить</button>
     </div>
+  </div>
+</div>
+
+<div class="param-block">
+  <div class="param-head">
+    <div class="param-title">1PPS</div>
+    <div class="param-unit">ширина</div>
+  </div>
+
+  <div class="value-box" style="gap:12px;">
+    <select class="field-input mono" id="ppsw-code" disabled>
+      <option value="0">0</option>
+      <option value="1">1</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+      <option value="5">5</option>
+      <option value="6">6</option>
+      <option value="7">7</option>
+    </select>
+
+    <button class="btn small chip-accent" id="btn-ppsw-set" type="button" disabled>
+      Установить (PPSW)
+    </button>
+  </div>
+
+  <div class="inline-status" style="margin-top:10px;">
+    <div class="mini-hint">Текущая:</div>
+    <div class="mono" id="ppsw-current">—</div>
   </div>
 </div>
 

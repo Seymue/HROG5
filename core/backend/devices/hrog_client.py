@@ -21,6 +21,7 @@ from typing import Optional, Dict, Any, Tuple
 
 from .moxa_client import MoxaClient
 
+import re
 
 # --------- Вспомогательные структуры для некоторых команд ---------
 
@@ -137,6 +138,26 @@ class Hrog5Client:
         if len(parts) < 2:
             return None
         return parts[1]
+
+    @staticmethod
+    def _parse_first_float(text: str | None) -> Optional[float]:
+        """
+        Достаёт первое число из строки, игнорируя единицы/скобки:
+        '100(ns)' -> 100.0
+        '10.0 ns' -> 10.0
+        '1.0E-14' -> 1e-14
+        """
+        if not text:
+            return None
+        s = text.replace(",", ".")  # на всякий
+        m = re.search(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?", s)
+        if not m:
+            return None
+        try:
+            return float(m.group(0))
+        except ValueError:
+            return None
+
 
     # ------------------ BAUD / BAUD? ------------------ #
 
@@ -468,17 +489,11 @@ class Hrog5Client:
 
     def get_last_time_step(self) -> Optional[float]:
         """
-        STOFFS? -> 'STOFFS? 10.0 ns'
+        STOFFS? -> 'STOFFS? 10.0 ns' (или другие варианты)
         """
         line = self._query(b"STOFFS?\r")
         val = self._value_from_pair(line)
-        if not val:
-            return None
-        val = val.replace("ns", "").strip()
-        try:
-            return float(val)
-        except ValueError:
-            return None
+        return self._parse_first_float(val)
 
     # ------------------ SYNC / SYNC? ------------------ #
 
@@ -532,17 +547,14 @@ class Hrog5Client:
 
     def get_time_offset(self) -> Optional[float]:
         """
-        TOFFS? -> 'TOFFS? 100.0ns'
+        TOFFS? -> может быть:
+          'TOFFS? 100(ns)'
+          'TOFFS? 100 ns'
+          'TOFFS? 100ns'
         """
         line = self._query(b"TOFFS?\r")
-        val = self._value_from_pair(line)
-        if not val:
-            return None
-        val = val.replace("ns", "").strip()
-        try:
-            return float(val)
-        except ValueError:
-            return None
+        val = self._value_from_pair(line)  # например '100(ns)'
+        return self._parse_first_float(val)
 
     # ------------------ *RPHS ------------------ #
 
