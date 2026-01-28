@@ -7,6 +7,17 @@ from core.backend.devices.device_pool import DevicePool
 from core.backend.devices.moxa_client import MoxaClient
 from core.backend.devices.hrog_client import Hrog5Client
 
+def create_hrog_client_for_device(dev: Device) -> Hrog5Client:
+    moxa = MoxaClient(
+        host=dev.moxa_host,
+        port=dev.moxa_port,
+        timeout=0.05,
+        reconnect_delay=0.05,
+        max_retries=1,
+        sniff=None,  # None => читаем env HROG_SNIFF
+    )
+    return Hrog5Client(transport=moxa)
+
 
 def create_hrog_client_for_device(dev: Device) -> Hrog5Client:
     """

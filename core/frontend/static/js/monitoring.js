@@ -243,6 +243,59 @@ function renderStatusTable(rows) {
   });
 }
 
+/* --- NEW: compact params/result helpers --- */
+
+function toOneLine(s) {
+  return String(s).replace(/\s+/g, " ").trim();
+}
+
+function compact(value, maxLen = 90) {
+  if (value === null || value === undefined) return "—";
+  let s;
+  if (typeof value === "string") s = value;
+  else {
+    try { s = JSON.stringify(value); }
+    catch { s = String(value); }
+  }
+  s = toOneLine(s);
+  return s.length > maxLen ? s.slice(0, maxLen - 1) + "…" : s;
+}
+
+function extractParams(row) {
+  if (!row) return null;
+
+  // прямые варианты
+  if (row.params != null) return row.params;
+  if (row.command_params != null) return row.command_params;
+
+  // если бек хранит request body целиком
+  const rb = row.request_body || row.body || row.request || row.payload;
+  if (rb && typeof rb === "object") {
+    if (rb.params != null) return rb.params;
+
+    // иногда параметры лежат "плоско"
+    const { device_id, command_code, user_id, ...rest } = rb;
+    if (Object.keys(rest).length) return rest;
+  }
+
+  return null;
+}
+
+function extractResult(row) {
+  if (!row) return null;
+
+  // Частые варианты ответа/результата
+  if (row.data != null) return row.data;
+  if (row.response != null) return row.response;
+  if (row.result != null) return row.result;
+
+  // Ошибка
+  if (row.error != null) return row.error;
+  if (row.detail != null) return row.detail;
+
+  return null;
+}
+
 function renderCmdTable(rows) {
   const table = el("mon-cmd-table");
   if (!table) return;
@@ -255,7 +308,7 @@ function renderCmdTable(rows) {
 
   if (!rows || rows.length === 0) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="4" class="muted">История команд пуста.</td>`;
+    tr.innerHTML = `<td colspan="6" class="muted">История команд пуста.</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -264,11 +317,16 @@ function renderCmdTable(rows) {
     const ok = !!r.success;
     const okDot = ok ? "ok" : "bad";
 
+    const params = extractParams(r);
+    const result = extractResult(r);
+
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="mono">${fmtIsoToTime(r.created_at)}</td>
       <td class="mono">${r.command_code}</td>
       <td><span class="badge-ok"><span class="badge-dot ${okDot}"></span><span class="mono">${ok ? "OK" : "ERR"}</span></span></td>
+      <td class="mono">${compact(params)}</td>
+      <td class="mono">${compact(result)}</td>
       <td class="mono">${r.duration_ms ?? "—"}</td>
     `;
 

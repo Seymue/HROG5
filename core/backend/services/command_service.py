@@ -94,6 +94,7 @@ class CommandService:
         "DATE?",
         "PPSW?",
         "SRE?",
+        "SYNC?",
     }
 
     def __init__(
@@ -204,6 +205,11 @@ class CommandService:
         # --- базовые чтения ---
         if cmd == "GET_STATUS":
             return client.get_basic_status()
+
+        if cmd == "SYNC?":
+            res = client.get_sync_result()
+            return {"sync": res.__dict__ if res else None}
+
 
         if cmd == "TEMP?":
             return {"temperature": client.get_temp()}

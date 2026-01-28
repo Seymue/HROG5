@@ -11,6 +11,8 @@ let selectedId = null;
 let lastPollOkById = new Map(); // device_id -> boolean
 let errorsCount = 0;
 
+let ffofStep = 1e-12; // шаг для кнопок +/- в FFOF (меняется чипами)
+
 // device modal state
 let deviceModalMode = "create"; // "create" | "edit"
 let deviceModalId = null;
@@ -97,7 +99,7 @@ function setConn(ok, text) {
 }
 
 function setEnabledUI(enabled) {
-  // quick buttons
+  // quick buttons + inputs
   const ids = [
     "btn-sync",
     "btn-reset-phase",
@@ -112,6 +114,15 @@ function setEnabledUI(enabled) {
     "toffs-minus",
     "toffs-plus",
     "btn-refresh",
+
+    // 1PPS / PPSW controls (optional elements)
+    "ppsw-code",
+    "btn-ppsw-set",
+
+      "ffof-input",
+"ffof-minus",
+"ffof-plus",
+
   ];
   ids.forEach((id) => {
     const n = el(id);
@@ -183,10 +194,38 @@ async function runCommand(command_code, params = null) {
   });
 
   const json = await resp.json().catch(() => ({}));
+
+  // HTTP-ошибка
   if (!resp.ok) {
     throw new Error(`HTTP ${resp.status}: ${JSON.stringify(json)}`);
   }
+
+  // ВАЖНО: даже при 200 бэк может вернуть success=false
+  if (json && json.success === false) {
+    const status = json.status ? String(json.status) : "Command failed";
+    // если внутри есть деталь/сообщение — добавим
+    const detail = json.detail ? ` • ${String(json.detail)}` : "";
+    throw new Error(status + detail);
+  }
+
   return json; // CommandResponse
+}
+
+/**
+ * Попытаться выполнить команду по одному из кодов (fallback).
+ * Возвращает {res, used_code}. Бросает ошибку, если все варианты не прошли.
+ */
+async function runCommandWithFallback(commandCodes, params = null) {
+  let lastErr = null;
+  for (const code of commandCodes) {
+    try {
+      const res = await runCommand(code, params);
+      return { res, used_code: code };
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("Команда не выполнена");
 }
 
 /* -------------------- Render -------------------- */
@@ -290,6 +329,11 @@ function clearStatusView() {
     "st-phase",
     "st-ffof",
     "st-toffs",
+
+    // 1PPS / PPSW (optional elements)
+    "st-ppsw",
+    "ppsw-current",
+
     "st-sre-badge",
     "sre-ext",
     "sre-int",
@@ -313,11 +357,16 @@ function clearStatusView() {
   const updated = el("status-updated");
   if (updated) updated.textContent = "Нет данных";
 
-  const inputs = ["freq-input", "phase-input", "toffs-input"];
+  const inputs = ["freq-input", "phase-input", "ffof-input", "toffs-input"];
+
   inputs.forEach((id) => {
     const n = el(id);
     if (n) n.value = "";
   });
+
+  // reset PPSW select to 0 (if exists)
+  const ppswSel = el("ppsw-code");
+  if (ppswSel) ppswSel.value = "0";
 }
 
 function formatMaybe(v, suffix = "") {
@@ -325,9 +374,124 @@ function formatMaybe(v, suffix = "") {
   return `${v}${suffix}`;
 }
 
+function parseNumFlex(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim().replace(",", ".");
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function fmtFfof(n) {
+  if (n === null || n === undefined) return "—";
+  if (!Number.isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  if (abs !== 0 && (abs < 1e-6 || abs >= 1e6)) return n.toExponential(6);
+  return String(n);
+}
+
+
 function flagText(v) {
   if (v === null || v === undefined) return "—";
   return v ? "Ошибка" : "OK";
+}
+
+/**
+ * Пытается красиво отформатировать ответ PPSW?
+ * Поддерживает разные формы data: object|string|number.
+ */
+function formatPpswData(data) {
+  if (data === null || data === undefined) return { text: "—", code: null };
+
+  // Если сервер вернул строку (например "3, 10us")
+  if (typeof data === "string") {
+    const s = data.trim();
+    // попробуем вытащить код 0..7
+    const mCode = s.match(/\b([0-7])\b/);
+    const code = mCode ? Number(mCode[1]) : null;
+    return { text: s || "—", code: Number.isFinite(code) ? code : null };
+  }
+
+  // Если сервер вернул число
+  if (typeof data === "number") {
+    const code = Number.isFinite(data) ? data : null;
+    return { text: Number.isFinite(data) ? String(data) : "—", code };
+  }
+
+  // Если объект: ищем типичные поля
+  if (typeof data === "object") {
+    const code =
+      data.pwidth_code ??
+      data.ppsw_code ??
+      data.code ??
+      data.width_code ??
+      null;
+
+    const widthUs =
+      data.pwidth_us ??
+      data.width_us ??
+      data.duration_us ??
+      data.pulse_us ??
+      null;
+
+    const widthNs =
+      data.pwidth_ns ??
+      data.width_ns ??
+      data.duration_ns ??
+      data.pulse_ns ??
+      null;
+
+    // Иногда бэк может вернуть "text" / "raw"
+    const rawText = data.text ?? data.raw ?? null;
+
+    let parts = [];
+    if (code !== null && code !== undefined) parts.push(`код ${code}`);
+
+    if (widthUs !== null && widthUs !== undefined) parts.push(`${widthUs} µs`);
+    else if (widthNs !== null && widthNs !== undefined) parts.push(`${widthNs} ns`);
+
+    if (parts.length === 0 && rawText) parts = [String(rawText)];
+    if (parts.length === 0) {
+      // fallback: компактный JSON
+      try {
+        parts = [JSON.stringify(data)];
+      } catch {
+        parts = [String(data)];
+      }
+    }
+
+    return {
+      text: parts.join(" • "),
+      code: code !== null && code !== undefined ? Number(code) : null,
+    };
+  }
+
+  return { text: String(data), code: null };
+}
+
+function updatePpswUI(ppswRes) {
+  const st = el("st-ppsw");
+  const cur = el("ppsw-current");
+  const sel = el("ppsw-code");
+
+  // Твой бэк: { success, status, data: { ppsw: { index, width_us } } }
+  const p = ppswRes?.data?.ppsw;
+
+  if (!p) {
+    if (st) st.textContent = "—";
+    if (cur) cur.textContent = "—";
+    return;
+  }
+
+  const text = `код ${p.index} • ${p.width_us} µs`;
+
+  if (st) st.textContent = text;
+  if (cur) cur.textContent = text;
+
+  if (sel) {
+    const v = String(p.index);
+    if (Array.from(sel.options).some(o => o.value === v)) sel.value = v;
+  }
 }
 
 function updateStatusUI(data, durationMs) {
@@ -340,10 +504,14 @@ function updateStatusUI(data, durationMs) {
   if (stTemp) stTemp.textContent = formatMaybe(data.temperature, " °C");
   if (stFreq) stFreq.textContent = formatMaybe(data.freq, " Hz");
   if (stPhase) stPhase.textContent = formatMaybe(data.phase, " °");
-  if (stFfof) stFfof.textContent = formatMaybe(data.ffof, "");
+if (stFfof) stFfof.textContent = fmtFfof(data.ffof);
   if (stToffs) stToffs.textContent = formatMaybe(data.time_offset_ns, " ns");
 
   // also fill big inputs
+    if (el("ffof-input") && data.ffof !== null && data.ffof !== undefined) {
+  el("ffof-input").value = fmtFfof(data.ffof);
+}
+
   if (el("freq-input") && data.freq !== null && data.freq !== undefined) el("freq-input").value = data.freq;
   if (el("phase-input") && data.phase !== null && data.phase !== undefined) el("phase-input").value = data.phase;
   if (el("toffs-input") && data.time_offset_ns !== null && data.time_offset_ns !== undefined) el("toffs-input").value = data.time_offset_ns;
@@ -426,11 +594,34 @@ async function refreshStatus() {
   setConn(null, "Обновление статуса…");
 
   try {
-    const res = await runCommand("GET_STATUS", null);
+    // 1) основной статус
+    const statusRes = await runCommand("GET_STATUS", null);
     lastPollOkById.set(selectedId, true);
 
-    updateStatusUI(res.data || {}, res.duration_ms);
-    setLastCommand(`GET_STATUS • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
+    updateStatusUI(statusRes.data || {}, statusRes.duration_ms);
+
+    // 2) PPSW? (не критично: если не получилось — статус всё равно ок)
+    let ppswRes = null;
+    let ppswUsed = null;
+    let ppswErr = null;
+
+      // ---- PPSW (1PPS ширина) ----
+  try {
+    const ppswRes = await runCommand("PPSW?", null);
+    updatePpswUI(ppswRes);
+  } catch (e) {
+    console.warn("[control_panel] PPSW? failed:", e);
+    updatePpswUI(null);
+  }
+
+
+    // лог: GET_STATUS + PPSW?
+    const logPayload = {
+      get_status: statusRes,
+      ppsw: ppswRes ? { used_code: ppswUsed, response: ppswRes } : null,
+      ppsw_error: ppswRes ? null : ppswErr,
+    };
+    setLastCommand(`GET_STATUS${ppswRes ? " + PPSW?" : ""} • ${nowTimeStr()}`, JSON.stringify(logPayload, null, 2));
 
     setConn(true, "Связь OK. Статус обновлён.");
   } catch (e) {
@@ -467,7 +658,7 @@ async function selectDevice(id) {
 
 function parseNumberInput(id) {
   const n = el(id);
-  const raw = n ? n.value : "";
+  const raw = (n ? n.value : "").trim().replace(",", ".");
   const num = Number(raw);
   if (!Number.isFinite(num)) throw new Error("Некорректное число");
   return num;
@@ -492,6 +683,13 @@ async function doSet(type) {
     setLastCommand(`SET_TIME_OFFSET • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
     await refreshStatus();
   }
+  else if (type === "ffof") {
+    const v = parseNumberInput("ffof-input"); // уже умеет запятую/экспоненту
+    const res = await runCommand("SET_FFOF", { ffof: v });
+    setLastCommand(`SET_FFOF • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
+    await refreshStatus();
+  }
+
 }
 
 async function doStep(type, delta) {
@@ -510,6 +708,44 @@ async function doStep(type, delta) {
     setLastCommand(`STEP_TIME_OFFSET (${delta}) • ${nowTimeStr()}`, JSON.stringify(res, null, 2));
     await refreshStatus();
   }
+    else if (type === "ffof") {
+    const input = el("ffof-input");
+    if (!input) return;
+
+    const step = Number(delta);
+    if (!Number.isFinite(step)) throw new Error("Некорректный шаг FFOF");
+
+    // запомним модуль шага, чтобы кнопки +/- работали ожидаемо
+    if (step !== 0) ffofStep = Math.abs(step);
+
+    const cur = parseNumFlex(input.value) ?? 0;
+    input.value = fmtFfof(cur + step);
+  }
+
+}
+
+/* --- PPSW set --- */
+
+async function doSetPpsw() {
+  if (!selectedId) return;
+
+  const sel = el("ppsw-code");
+  if (!sel) throw new Error("Элемент ppsw-code не найден");
+
+  const code = Number(sel.value);
+  if (!Number.isInteger(code) || code < 0 || code > 7) {
+    throw new Error("PPSW: код должен быть 0–7");
+  }
+
+  // ВАЖНО: под твой бэк
+  const res = await runCommand("SET_PPS_WIDTH", { pwidth_index: code });
+
+  setLastCommand(
+    `SET_PPS_WIDTH (${code}) • ${nowTimeStr()}`,
+    JSON.stringify(res, null, 2)
+  );
+
+  await refreshStatus();
 }
 
 /* -------------------- Help modal -------------------- */
@@ -785,6 +1021,9 @@ function wireUI() {
   on("phase-plus", "click", () => doStep("phase", 1));
   on("toffs-minus", "click", () => doStep("toffs", -1));
   on("toffs-plus", "click", () => doStep("toffs", 1));
+  on("ffof-minus", "click", () => doStep("ffof", -ffofStep));
+  on("ffof-plus", "click", () => doStep("ffof",  ffofStep));
+
 
   // chips
   document.querySelectorAll(".chip").forEach((btn) => {
@@ -799,6 +1038,15 @@ function wireUI() {
         setLastCommand(`Ошибка • ${nowTimeStr()}`, String(e));
       }
     });
+  });
+
+  // PPSW set
+  on("btn-ppsw-set", "click", async () => {
+    try {
+      await doSetPpsw();
+    } catch (e) {
+      setLastCommand(`PPSW • ошибка • ${nowTimeStr()}`, String(e));
+    }
   });
 
   // log clear
